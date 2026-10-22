@@ -17,7 +17,7 @@ class PayrollComponent extends Model
 
     public const CALCULATIONS = ['fixed', 'percent_of_basic', 'percent_of_gross', 'formula'];
 
-    public const ROLES = ['overtime', 'bonus', 'arrears', 'leave_encashment', 'notice_pay', 'pension_employee', 'pension_employer', 'insurance_premium', 'helb', 'loan', 'advance', 'sacco'];
+    public const ROLES = ['overtime', 'bonus', 'arrears', 'leave_encashment', 'leave_recovery', 'notice_pay', 'pension_employee', 'pension_employer', 'insurance_premium', 'helb', 'loan', 'advance', 'sacco'];
 
     protected $guarded = ['id'];
 

@@ -16,7 +16,9 @@ use Carbon\CarbonInterface;
  *   overtime_hours_normal    float  weekday overtime hours (paid at the company's normal OT multiplier)
  *   overtime_hours_holiday   float  rest-day / public-holiday overtime hours (holiday multiplier)
  *   days_absent              float  unexplained absences (informational; deduction is a company policy choice)
- *   annual_leave_balance     float  current annual leave balance in days (used for leave encashment in final dues)
+ *   annual_leave_balance     float  current annual leave balance in days
+ *   annual_leave_settlement  float  leavers only: annual leave accrued to the exit date (exit month pro-rated) net of
+ *                                   leave taken; final dues encash it when positive and recover it when negative
  *   reimbursements           float  KES owed to the employee for approved expense claims paid through payroll.
  *                                   Non-taxable and not pay: excluded from gross, PAYE, NSSF, SHIF and AHL, added
  *                                   to net pay and shown on the payslip as "Expense reimbursements". Collected for

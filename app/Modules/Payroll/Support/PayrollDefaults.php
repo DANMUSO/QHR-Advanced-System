@@ -69,6 +69,7 @@ class PayrollDefaults
             $c('HELB', 'HELB repayment', 'deduction', 'helb', false, true, '2230', 'fixed', 3000, null, false, 33),
             $c('LOAN', 'Loan repayment', 'deduction', 'loan', false, true, '1310', 'fixed', null, null, false, 34),
             $c('ADVANCE', 'Salary advance recovery', 'deduction', 'advance', false, false, '1320', 'fixed', null, null, false, 35),
+            $c('LEAVE_REC', 'Leave over-taken recovery', 'deduction', 'leave_recovery', false, false, '6100', 'fixed', null, null, false, 37),
             $c('PEN_EE', 'Pension (employee)', 'deduction', 'pension_employee', false, true, '2270', 'percent_of_basic', null, 5, false, 36),
             $c('PEN_ER', 'Pension (employer)', 'employer_contribution', 'pension_employer', false, true, '6210', 'percent_of_basic', null, 5, false, 40),
         ];

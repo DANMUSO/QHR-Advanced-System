@@ -251,12 +251,20 @@ class PayrollRunService
                 $inputs = ($isRegular || $isFinal) ? $this->inputs->collect($employee, $periodStart, $periodEnd) : [];
 
                 if ($isFinal) {
-                    $leaveDays = $run->options['leave_days'] ?? ($inputs['annual_leave_balance'] ?? 0);
+                    // Leave accrued to the exit date, net of leave taken (Leave module): positive → encash,
+                    // still negative after full accrual → recover the over-taken days. HR's override wins.
+                    $leaveDays = (float) ($run->options['leave_days'] ?? $inputs['annual_leave_settlement'] ?? $inputs['annual_leave_balance'] ?? 0);
                     $divisor = (float) PayrollSettings::get($company, 'leave_encashment_divisor') ?: 22;
+                    $daysLabel = rtrim(rtrim(number_format(abs($leaveDays), 2), '0'), '.');
                     if ($leaveDays > 0 && ($comp = $byCode['LEAVE_ENC'] ?? $byRole['leave_encashment'] ?? null)) {
                         $c = $comp->toEngine(round($basic / $divisor * $leaveDays, 2), null, 'one_off');
                         $c['calculation'] = 'fixed';
-                        $c['name'] = sprintf('Leave encashment (%s days)', rtrim(rtrim(number_format($leaveDays, 2), '0'), '.'));
+                        $c['name'] = sprintf('Leave encashment (%s days)', $daysLabel);
+                        $lines[] = $c;
+                    } elseif ($leaveDays < 0 && ($comp = $byCode['LEAVE_REC'] ?? $byRole['leave_recovery'] ?? null)) {
+                        $c = $comp->toEngine(round($basic / $divisor * abs($leaveDays), 2), null, 'one_off');
+                        $c['calculation'] = 'fixed';
+                        $c['name'] = sprintf('Leave over-taken recovery (%s days)', $daysLabel);
                         $lines[] = $c;
                     }
                     if (($notice = (float) ($run->options['notice_pay'] ?? 0)) > 0 && ($comp = $byCode['NOTICE_PAY'] ?? $byRole['notice_pay'] ?? null)) {
