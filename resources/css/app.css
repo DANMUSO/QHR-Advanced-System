@@ -1,0 +1,124 @@
+@import 'tailwindcss';
+
+@source '../**/*.blade.php';
+@source '../**/*.js';
+@source '../**/*.vue';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+    --color-brand-50: #eef2ff;
+    --color-brand-100: #e0e7ff;
+    --color-brand-200: #c7d2fe;
+    --color-brand-300: #a5b4fc;
+    --color-brand-400: #818cf8;
+    --color-brand-500: #6366f1;
+    --color-brand-600: #4f46e5;
+    --color-brand-700: #4338ca;
+    --color-brand-800: #3730a3;
+    --color-brand-900: #312e81;
+}
+
+html, body { height: 100%; }
+
+@utility card {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900;
+}
+
+@utility input {
+    @apply block w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500;
+}
+
+@utility label {
+    @apply mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300;
+}
+
+@utility btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus-visible:ring-4 disabled:cursor-not-allowed disabled:opacity-60;
+}
+
+@utility btn-primary {
+    @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700 focus-visible:ring-brand-500/30;
+}
+
+@utility btn-secondary {
+    @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 focus-visible:ring-slate-400/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800;
+}
+
+@utility btn-danger {
+    @apply btn bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-500/30;
+}
+
+@utility btn-success {
+    @apply btn bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500/30;
+}
+
+@utility btn-ghost {
+    @apply btn text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800;
+}
+
+@utility field-error {
+    @apply mt-1.5 text-sm text-rose-600 dark:text-rose-400;
+}
+
+@utility badge {
+    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium;
+}
+
+@utility badge-blue {
+    @apply badge bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300;
+}
+
+@utility badge-green {
+    @apply badge bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300;
+}
+
+@utility badge-amber {
+    @apply badge bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300;
+}
+
+@utility badge-red {
+    @apply badge bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300;
+}
+
+@utility badge-gray {
+    @apply badge bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300;
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgb(148 163 184 / 0.4); border-radius: 9999px; }
+
+.fade-enter-active, .fade-leave-active { transition: opacity .15s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+.slide-up-enter-active, .slide-up-leave-active { transition: all .2s ease; }
+.slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateY(8px); }
+
+/* ── SweetAlert2 overrides ─────────────────────────────── */
+.swal-popup {
+    border-radius: 1rem !important;
+    font-family: var(--font-sans) !important;
+    padding: 1.5rem !important;
+    box-shadow: 0 20px 60px -10px rgb(0 0 0 / 0.2) !important;
+}
+.swal2-title {
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+    color: #0f172a !important;
+}
+.swal2-html-container {
+    font-size: 0.875rem !important;
+    color: #64748b !important;
+}
+.swal-btn-confirm {
+    @apply btn btn-danger;
+    margin-left: 0.5rem !important;
+}
+.swal-btn-cancel {
+    @apply btn btn-secondary;
+}
+/* Toast tweaks */
+.swal2-toast .swal2-title {
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+}
