@@ -29,7 +29,8 @@ class ExpenseController extends Controller
         $employee = $this->me($request);
 
         return response()->json(['data' => ExpenseClaim::where('employee_id', $employee->id)->latest('expense_date')->get()
-            ->map(fn (ExpenseClaim $e) => $this->presentExpense($e))]);
+            ->map(fn (ExpenseClaim $e) => $this->presentExpense($e)),
+            'categories' => ExpenseClaim::CATEGORIES]);
     }
 
     public function store(Request $request): JsonResponse

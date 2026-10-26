@@ -248,7 +248,7 @@ class LeaveRequestController extends Controller
 
         return \App\Modules\Employees\Support\ApproverResolver::isReachable($r->supervisor)
             ? 'Waiting for '.$r->supervisor->full_name
-            : 'Unassigned – waiting for HR';
+            : 'No supervisor – HR approves';
     }
 
     public function approve(Request $request, LeaveRequest $leaveRequest): JsonResponse
@@ -347,6 +347,12 @@ class LeaveRequestController extends Controller
     public function allBalances(Request $request): JsonResponse
     {
         $year = $request->integer('year') ?: now()->year;
+        // Never show "No balances yet": anyone without a row for this (current or past) year gets their opening
+        // balances now, exactly as their own My Leave page would create them.
+        if ($year <= now()->year) {
+            Employee::where('status', 'active')->whereDoesntHave('leaveBalances', fn ($q) => $q->where('year', $year))
+                ->get()->each(fn (Employee $e) => app(\App\Modules\Leave\Services\LeaveBalanceService::class)->summary($e, $year));
+        }
         $employees = Employee::with(['department:id,name', 'leaveBalances' => fn ($q) => $q->where('year', $year)->with('leaveType:id,name,code,color,sort_order')])
             ->when($request->filled('department_id'), fn ($q) => $q->where('department_id', $request->integer('department_id')))
             ->when($request->filled('search'), fn ($q) => $q->search($request->query('search')))

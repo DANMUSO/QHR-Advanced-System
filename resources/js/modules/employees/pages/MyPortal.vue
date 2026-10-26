@@ -103,8 +103,8 @@ const expensesLoading = ref(false);
 const expenseModal = ref(false);
 const expenseForm = ref({});
 const expenseErrors = ref({});
-// Must match App\Modules\Benefits\Models\ExpenseClaim::CATEGORIES.
-const EXPENSE_CATEGORIES = ['travel', 'accommodation', 'meals', 'transport', 'fuel', 'airtime', 'communication', 'stationery', 'training', 'client_entertainment', 'other'];
+// Allowed expense categories, sent by GET /expenses (ExpenseClaim::CATEGORIES).
+const EXPENSE_CATEGORIES = ref(['transport', 'other']);
 const expenseSaving = ref(false);
 const expenseStatusColors = { draft: 'slate', submitted: 'blue', approved: 'green', rejected: 'red', paid: 'emerald', pending: 'yellow', completed: 'blue', repaid: 'blue' };
 const expenseEndpoints = { expenses: '/expenses', travel: '/expenses/travel' };
@@ -114,7 +114,11 @@ const expenseDefaults = {
 };
 async function loadExpenses() {
     expensesLoading.value = true;
-    try { const { data } = await api.get(expenseEndpoints[expenseTab.value]); expenses.value = data.data ?? data; }
+    try {
+        const { data } = await api.get(expenseEndpoints[expenseTab.value]);
+        expenses.value = data.data ?? data;
+        if (data.categories?.length) EXPENSE_CATEGORIES.value = data.categories;
+    }
     finally { expensesLoading.value = false; }
 }
 function switchExpenseTab(t) { expenseTab.value = t; loadExpenses(); }

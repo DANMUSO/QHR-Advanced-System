@@ -47,7 +47,7 @@ class LeaveApprovalRoutingTest extends LeaveAttendanceTestCase
 
         $this->actingAs($hr)->getJson('/api/leave/approvals')->assertOk()
             ->assertJsonPath('data.0.unassigned', true)
-            ->assertJsonPath('data.0.approver', 'Unassigned – waiting for HR');
+            ->assertJsonPath('data.0.approver', 'No supervisor – HR approves');
         $this->assertSame(1, (new SupervisorApprovalProvider)->countFor($hr));
     }
 }

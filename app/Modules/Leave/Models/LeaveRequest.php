@@ -166,8 +166,9 @@ class LeaveRequest extends Model
             if ($step && ($step['type'] ?? null) !== 'supervisor') {
                 return 'Pending '.\App\Modules\Organization\Support\ApprovalChain::label($step);
             }
+            // No supervisor stage at all (no supervisor, or none who can act): HR is the only approver.
             if (! $this->supervisor_id && ! $this->approver_role) {
-                return 'Pending HR approval';
+                return 'Pending HR approval (no supervisor)';
             }
         }
 

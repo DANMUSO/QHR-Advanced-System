@@ -68,7 +68,7 @@ onMounted(load);
                                     <span class="font-semibold text-slate-900 dark:text-white">{{ r.employee?.name }}</span>
                                     <Badge color="blue">{{ r.current_step ? `Awaiting ${r.current_step}` : r.status_label }}</Badge>
                                     <Badge v-if="r.amended" color="purple">Amended</Badge>
-                                    <Badge v-if="r.unassigned" color="amber">Unassigned – waiting for HR</Badge>
+                                    <Badge v-if="r.unassigned" color="amber">No supervisor – HR approves</Badge>
                                     <span v-else-if="r.approver && !r.is_my_report" class="text-xs text-slate-400">{{ r.approver }}</span>
                                 </div>
                                 <p class="mt-0.5 flex items-center gap-1.5 text-sm text-slate-500">
