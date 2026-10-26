@@ -320,7 +320,7 @@ class EmployeeController extends Controller
             'description' => $a->description,
             'event' => $a->event,
             'subject' => class_basename((string) $a->subject_type),
-            'causer' => $a->causer?->name ?? 'System',
+            'causer' => \App\Support\ActivityCauser::label($a),
             'properties' => $a->properties,
             'at' => $a->created_at,
         ]));

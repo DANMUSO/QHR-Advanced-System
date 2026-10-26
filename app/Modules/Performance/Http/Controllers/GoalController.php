@@ -313,7 +313,10 @@ class GoalController extends Controller
             'employee' => $this->person($g->employee),
             'approver' => $g->approver ? ['id' => $g->approver->id, 'name' => $g->approver->full_name] : null,
             'mode' => $g->mode, 'split' => $g->split, 'status' => $g->status,
+            // progress_pct fills the bar (capped at 100); actual_pct is the true % of target; achievement_pct is what was
+            // scored (capped at the cycle maximum, e.g. 120%).
             'target' => $g->target, 'achieved' => $g->achieved, 'progress_pct' => $progress,
+            'actual_pct' => $g->target > 0 && $g->achieved !== null ? round($g->achieved / $g->target * 100, 1) : null,
             'achievement_pct' => $g->achievement_pct, 'score' => $g->score,
             'employee_comment' => $g->employee_comment, 'supervisor_comment' => $g->supervisor_comment,
             'review_reason' => $g->review_reason, 'rejection_reason' => $g->rejection_reason,

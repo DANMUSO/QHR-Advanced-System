@@ -29,8 +29,11 @@ const tabs = [
     { key: 'induction',    label: 'Induction Tasks' },
     { key: 'assets',       label: 'Assets' },
 ];
-const tab = ref(tabs.some((t) => t.key === route.query.tab) ? route.query.tab : 'requisitions');
-const canEdit = computed(() => auth.can('employees.create'));
+const tab = ref(tabs.some((t) => t.key === route.query.tab) && (auth.can('recruitment.manage') || route.query.tab === 'requisitions') ? route.query.tab : 'requisitions');
+// HR runs the pipeline; a supervisor with recruitment.requisition only raises and tracks their own requisitions.
+const canEdit = computed(() => auth.can('recruitment.manage'));
+const canRequest = computed(() => canEdit.value || auth.can('recruitment.requisition'));
+const visibleTabs = computed(() => (canEdit.value ? tabs : tabs.filter((t) => t.key === 'requisitions')));
 
 const rows = ref([]);
 const paginator = ref(null);
@@ -120,7 +123,7 @@ const defaultForms = {
     interviews:   { applicant_id: '', interview_type: 'panel', scheduled_at: '', interviewer_id: '', location: '' },
     offers:       { applicant_id: '', offered_salary: '', start_date: '', expiry_date: '', notes: '', status: 'draft' },
     induction:    { name: '', category: 'hr', owner_role: 'hr', due_days: 7, is_mandatory: true, description: '' },
-    assets:       { employee_id: '', asset_name: '', asset_tag: '', assigned_date: new Date().toISOString().slice(0, 10), notes: '' },
+    assets:       { employee_id: '', asset_name: '', asset_tag: '', assigned_date: new Date().toLocaleDateString('en-CA'), notes: '' },
 };
 const editable = ['requisitions', 'postings', 'interviews', 'offers', 'induction', 'assets'];
 const titles = { requisitions: 'Requisition', postings: 'Job Posting', interviews: 'Interview', offers: 'Offer', induction: 'Induction Task', assets: 'Asset Assignment' };
@@ -238,14 +241,14 @@ onMounted(load);
         <PageHeader title="Recruitment Pipeline">
             <template #actions>
                 <a href="/careers" target="_blank" class="btn-secondary"><ExternalLink class="size-4" /> Careers page</a>
-                <button v-if="canEdit && editable.includes(tab)" class="btn-primary" @click="openForm()">
+                <button v-if="(tab === 'requisitions' ? canRequest : canEdit) && editable.includes(tab)" class="btn-primary" @click="openForm()">
                     <Plus class="size-4" />
                     {{ { requisitions: 'New Requisition', postings: 'New Posting', interviews: 'Schedule Interview', offers: 'Create Offer', induction: 'Add Task', assets: 'Assign Asset' }[tab] }}
                 </button>
             </template>
         </PageHeader>
 
-        <Tabs :tabs="tabs" :model-value="tab" @update:model-value="switchTab" />
+        <Tabs :tabs="visibleTabs" :model-value="tab" @update:model-value="switchTab" />
 
         <!-- Applicant stage filter -->
         <div v-if="tab === 'applicants'" class="mb-4 flex flex-wrap gap-2">
@@ -316,7 +319,7 @@ onMounted(load);
                 <template v-if="tab === 'requisitions'">
                     <button v-if="row.can_decide" class="btn-ghost !p-1.5 text-green-600" title="Approve" @click="post(`/recruitment/requisitions/${row.id}/approve`)"><Check class="size-4" /></button>
                     <button v-if="row.can_decide" class="btn-ghost !p-1.5 text-rose-600" title="Reject" @click="rejecting = { open: true, row, loading: false }"><X class="size-4" /></button>
-                    <button v-if="canEdit && !['approved','filled'].includes(row.status)" class="btn-ghost !p-1.5" title="Edit" @click="openForm(row)"><Pencil class="size-4" /></button>
+                    <button v-if="(canEdit || row.requested_by_id === auth.user?.id) && !['approved','filled'].includes(row.status)" class="btn-ghost !p-1.5" title="Edit" @click="openForm(row)"><Pencil class="size-4" /></button>
                 </template>
                 <!-- Postings -->
                 <template v-else-if="tab === 'postings'">

@@ -85,7 +85,9 @@ class PerformanceJourneyTest extends TestCase
 
         $this->actingAs($sup)->getJson('/api/performance/approvals')->assertOk()->assertJsonPath('data.0.id', $goal);
         $inbox = (new \App\Modules\Performance\Dashboard\KpiApprovalProvider)->pendingFor($sup);
-        $this->assertSame("/performance/goals/{$goal}/approve", $inbox[0]['approve_endpoint']);
+        // Listed in the inbox, but decided on the review page with target, result and evidence in view (no blind one-click).
+        $this->assertNull($inbox[0]['approve_endpoint']);
+        $this->assertSame('/performance/manage?tab=approvals', $inbox[0]['url']);
 
         $this->postJson("/api/performance/goals/{$goal}/approve", ['comment' => 'Good'])->assertOk()->assertJsonPath('data.status', 'approved');
         $this->assertSame(0, (new \App\Modules\Performance\Dashboard\KpiApprovalProvider)->countFor($sup));

@@ -91,7 +91,7 @@ class PayrollRunController extends PayrollController
                 ->sortBy(fn ($f) => $f['severity'] === 'error' ? 0 : 1)->values(),
             'audit' => \Spatie\Activitylog\Models\Activity::where('subject_type', $run->getMorphClass())->where('subject_id', $run->id)
                 ->with('causer:id,name')->latest()->limit(30)->get()
-                ->map(fn ($a) => ['description' => $a->description, 'causer' => $a->causer?->name, 'properties' => $a->properties, 'created_at' => $a->created_at]),
+                ->map(fn ($a) => ['description' => $a->description, 'causer' => \App\Support\ActivityCauser::label($a), 'properties' => $a->properties, 'created_at' => $a->created_at]),
         ]);
     }
 

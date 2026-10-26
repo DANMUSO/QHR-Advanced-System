@@ -32,6 +32,11 @@ return [
             'employees.transfer' => 'Transfer employees between companies',
             'employees.view-salary' => 'See salary information',
         ],
+        'Recruitment' => [
+            'recruitment.requisition' => 'Raise and track own job requisitions',
+            'recruitment.manage' => 'Run the recruitment pipeline (approve requisitions, postings, applicants, offers, onboarding)',
+            'recruitment.reports' => 'View hiring reports',
+        ],
         'Leave' => [
             'leave.apply' => 'Apply for leave',
             'leave.approve' => 'Approve team leave',
@@ -82,6 +87,7 @@ return [
                 'dashboard.hr', 'organization.manage', 'settings.manage',
                 'employees.view', 'employees.create', 'employees.update', 'employees.exit', 'employees.transfer', 'employees.view-salary',
                 'leave.manage', 'leave.reports', 'claims.approve', 'claims.reports', 'payroll.review',
+                'recruitment.requisition', 'recruitment.manage', 'recruitment.reports',
                 'attendance.view-team', 'attendance.manage', 'performance.admin', 'performance.manage-team',
                 'documents.manage', 'announcements.manage', 'engagement.manage', 'probation.manage',
                 'users.manage', 'users.impersonate', 'audit.view',
@@ -97,7 +103,7 @@ return [
         ],
         'supervisor' => [
             'label' => 'Supervisor',
-            'permissions' => ['leave.approve', 'leave.reports', 'attendance.view-team', 'performance.manage-team'],
+            'permissions' => ['leave.approve', 'leave.reports', 'attendance.view-team', 'performance.manage-team', 'recruitment.requisition'],
         ],
         'employee' => [
             'label' => 'Employee',

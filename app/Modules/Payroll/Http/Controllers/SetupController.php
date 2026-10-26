@@ -152,12 +152,14 @@ class SetupController extends PayrollController
             'variance_threshold' => ['nullable', 'numeric', 'min:0', 'max:1000'],
             'payslip_password' => ['nullable', Rule::in(['none', 'national_id'])],
             'own_pay_signoff' => ['nullable', 'boolean'],
+            'absence_policy' => ['nullable', Rule::in(['flag', 'deduct', 'ignore'])],
             'payroll_gl' => ['nullable', 'array'],
             'payroll_gl.*' => ['nullable', 'string', 'max:30'],
         ]);
         $company = $this->company($request);
         $data['variance_threshold'] = $data['variance_threshold'] ?? PayrollSettings::DEFAULTS['variance_threshold'];
         $data['payslip_password'] = $data['payslip_password'] ?? 'none';
+        $data['absence_policy'] = $data['absence_policy'] ?? PayrollSettings::get($company, 'absence_policy');
         // Relaxing the own-pay control is an HR/admin decision, never the payroll preparer's.
         $data['own_pay_signoff'] = (bool) ($data['own_pay_signoff'] ?? PayrollSettings::get($company, 'own_pay_signoff'));
         abort_if($data['own_pay_signoff'] !== (bool) PayrollSettings::get($company, 'own_pay_signoff') && ! $request->user()->can('settings.manage'), 403,

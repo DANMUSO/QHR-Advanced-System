@@ -49,7 +49,8 @@ const errors = ref({});
 const saving = ref(false);
 
 // report
-const reportDate = ref(new Date().toISOString().slice(0, 10));
+// Local date (toISOString() is UTC and shows yesterday before 03:00 in Nairobi).
+const reportDate = ref(new Date().toLocaleDateString('en-CA'));
 const reportSummary = ref({});
 const reportStatusColors = { present: 'green', late: 'yellow', absent: 'red', on_leave: 'blue', incomplete: 'orange' };
 const reportCols = [
@@ -93,6 +94,7 @@ const tsCols = [
     { key: 'week_label', label: 'Week' },
     { key: 'total_hours', label: 'Hours', align: 'right' },
     { key: 'overtime_hours', label: 'Overtime', align: 'right' },
+    { key: 'exceptions', label: 'Exceptions' },
     { key: 'status', label: 'Status' },
 ];
 
@@ -255,6 +257,12 @@ onMounted(load);
         </DataTable>
 
         <DataTable v-else-if="tab === 'timesheets'" :columns="tsCols" :rows="rows" :loading="false" export-name="timesheets">
+            <template #cell-exceptions="{ row }">
+                <span v-if="row.incomplete_days || row.absent_days" class="text-xs font-medium text-amber-700 dark:text-amber-300">
+                    <template v-if="row.incomplete_days">{{ row.incomplete_days }} missing clock-out</template><template v-if="row.incomplete_days && row.absent_days"> · </template><template v-if="row.absent_days">{{ row.absent_days }} absent</template>
+                </span>
+                <span v-else class="text-xs text-slate-400">None</span>
+            </template>
             <template #cell-status="{ row }">
                 <Badge :color="tsStatusColors[row.status] ?? 'slate'">{{ label(row.status) }}</Badge>
                 <p v-if="row.note" class="mt-0.5 max-w-48 truncate text-xs text-slate-400" :title="row.note">{{ row.note }}</p>
@@ -289,8 +297,12 @@ onMounted(load);
                 <p class="text-sm text-slate-600 dark:text-slate-400">
                     {{ decision.row?.employee_name }} —
                     <template v-if="decision.kind === 'overtime'">{{ decision.row?.date }} · {{ decision.row?.hours }} h</template>
-                    <template v-else>{{ decision.row?.week_label }} · {{ decision.row?.total_hours }} h</template>
+                    <template v-else>{{ decision.row?.week_label }} · {{ decision.row?.total_hours }} h ({{ decision.row?.overtime_hours }} h overtime)</template>
                 </p>
+                <div v-if="decision.kind !== 'overtime' && (decision.row?.incomplete_days || decision.row?.absent_days)" class="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                    <p class="font-medium">Exceptions this week: <template v-if="decision.row.incomplete_days">{{ decision.row.incomplete_days }} day(s) without a clock-out</template><template v-if="decision.row.incomplete_days && decision.row.absent_days">, </template><template v-if="decision.row.absent_days">{{ decision.row.absent_days }} absent day(s)</template>.</p>
+                    <p v-if="decision.row.note" class="mt-1">Employee's note: {{ decision.row.note }}</p>
+                </div>
                 <div v-if="decision.kind === 'overtime' && decision.approve">
                     <label class="label">Hours to approve</label>
                     <input v-model="decision.hours" type="number" min="0.25" :max="decision.row?.hours" step="0.25" class="input w-32" />

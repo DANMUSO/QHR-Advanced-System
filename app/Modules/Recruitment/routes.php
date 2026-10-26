@@ -4,11 +4,25 @@ use App\Modules\Recruitment\Http\Controllers\RecruitmentController as R;
 use Illuminate\Support\Facades\Route;
 
 // Already inside the auth:sanctum + account.secure group, under /api.
-// Reading recruitment data needs employees.view; changing it needs employees.create (matches the menu).
+//   recruitment.requisition — supervisors raise and track their own requisitions;
+//   recruitment.manage      — HR runs the pipeline (all requisitions, postings, applicants, offers, onboarding);
+//   recruitment.reports     — hiring reports.
 // The public careers page (no auth) is registered from module.php.
 Route::prefix('recruitment')->group(function () {
-    Route::middleware('permission:employees.view')->group(function () {
+    Route::middleware('permission:recruitment.requisition|recruitment.manage')->group(function () {
+        // Requesters see and change only their own (controller); managers see all.
         Route::get('requisitions', [R::class, 'requisitions']);
+        Route::post('requisitions', [R::class, 'storeRequisition']);
+        Route::put('requisitions/{id}', [R::class, 'updateRequisition'])->whereNumber('id');
+        Route::delete('requisitions/{id}', [R::class, 'destroyRequisition'])->whereNumber('id');
+    });
+
+    Route::middleware('permission:recruitment.reports|recruitment.manage')->group(function () {
+        Route::get('reports', [R::class, 'reports']);
+        Route::get('reports/export', [R::class, 'exportReport']);
+    });
+
+    Route::middleware('permission:recruitment.manage')->group(function () {
         Route::get('postings', [R::class, 'postings']);
         Route::get('applicants', [R::class, 'applicants']);
         Route::get('applicants/{id}/cv', [R::class, 'applicantCv'])->whereNumber('id');
@@ -18,14 +32,10 @@ Route::prefix('recruitment')->group(function () {
         Route::get('onboarding', [R::class, 'onboarding']);
         Route::get('induction', [R::class, 'induction']);
         Route::get('assets', [R::class, 'assets']);
-        Route::get('reports', [R::class, 'reports']);
-        Route::get('reports/export', [R::class, 'exportReport']);
-    });
 
-    Route::middleware('permission:employees.create')->group(function () {
         foreach ([
-            'requisitions' => 'Requisition', 'postings' => 'Posting', 'applicants' => 'Applicant',
-            'interviews' => 'Interview', 'offers' => 'Offer', 'induction' => 'Induction', 'assets' => 'Asset',
+            'postings' => 'Posting', 'applicants' => 'Applicant', 'interviews' => 'Interview',
+            'offers' => 'Offer', 'induction' => 'Induction', 'assets' => 'Asset',
         ] as $path => $name) {
             Route::post($path, [R::class, "store{$name}"]);
             Route::put("{$path}/{id}", [R::class, "update{$name}"])->whereNumber('id');

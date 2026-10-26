@@ -49,7 +49,7 @@ class AuditController extends Controller
             'event' => $a->event,
             'subject' => class_basename((string) $a->subject_type),
             'subject_id' => $a->subject_id,
-            'causer' => $a->causer?->name ?? 'System',
+            'causer' => \App\Support\ActivityCauser::label($a),
             'changes' => $a->properties,
             'at' => $a->created_at,
         ]));

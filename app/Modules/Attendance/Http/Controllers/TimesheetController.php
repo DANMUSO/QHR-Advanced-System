@@ -67,7 +67,8 @@ class TimesheetController extends Controller
             ],
             'timesheet' => $sheet ? $this->present($sheet) : null,
             'can_submit' => $user->employee?->id === $employee->id
-                && $week->lte(today()) && (! $sheet || $sheet->status === 'rejected'),
+                && $week->endOfWeek(CarbonImmutable::SUNDAY)->lte(today()) && (! $sheet || $sheet->status === 'rejected'),
+            'submit_hint' => $week->endOfWeek(CarbonImmutable::SUNDAY)->gt(today()) ? 'You can submit this week from '.$week->endOfWeek(CarbonImmutable::SUNDAY)->format('l j M').'.' : null,
         ]);
     }
 
@@ -78,11 +79,23 @@ class TimesheetController extends Controller
         abort_unless($employee, 422, 'No employee record is linked to your account.');
         $week = self::weekStart($data['week']);
         abort_if($week->gt(today()), 422, 'You cannot submit a future week.');
+        // A week is submitted once it is over, so the hours are final.
+        $weekEnd = $week->endOfWeek(CarbonImmutable::SUNDAY);
+        abort_if($weekEnd->gt(today()), 422, 'This week is not over yet. You can submit it from '.$weekEnd->format('l j M').'.');
 
         $sheet = AttendanceTimesheet::where('employee_id', $employee->id)->whereDate('week_start', $week)->first();
         abort_if($sheet && $sheet->status !== 'rejected', 422, 'This week has already been '.($sheet?->status === 'approved' ? 'approved' : 'submitted').'.');
 
         $totals = HistoryBuilder::totals($this->history->range($employee, $week, $week->endOfWeek(CarbonImmutable::SUNDAY), false));
+        // Missing clock-outs, unexplained absences or no hours at all must be explained to the approver.
+        $exceptions = array_filter([
+            $totals['incomplete_count'] ? $totals['incomplete_count'].' day(s) without a clock-out' : null,
+            $totals['absent_count'] ? $totals['absent_count'].' absent day(s)' : null,
+            $totals['worked_minutes'] === 0 && ! $totals['on_leave_count'] ? 'no hours worked' : null,
+        ]);
+        if ($exceptions && blank($data['note'] ?? null)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['note' => 'This week has '.implode(', ', $exceptions).'. Add a note explaining it, or ask your supervisor to correct the punches first.']);
+        }
         $sheet ??= new AttendanceTimesheet(['employee_id' => $employee->id, 'week_start' => $week->toDateString()]);
         $sheet->forceFill([
             'company_id' => $employee->company_id,
@@ -90,6 +103,8 @@ class TimesheetController extends Controller
             'worked_minutes' => $totals['worked_minutes'],
             'regular_minutes' => $totals['regular_minutes'],
             'overtime_minutes' => $totals['overtime_minutes'],
+            'incomplete_days' => $totals['incomplete_count'],
+            'absent_days' => $totals['absent_count'],
             'note' => $data['note'] ?? null,
             'submitted_at' => now(),
             'decided_by' => null, 'decided_at' => null, 'reason' => null,
@@ -150,6 +165,8 @@ class TimesheetController extends Controller
             'total_hours' => round($t->worked_minutes / 60, 1),
             'regular_hours' => round($t->regular_minutes / 60, 1),
             'overtime_hours' => round($t->overtime_minutes / 60, 1),
+            'incomplete_days' => (int) $t->incomplete_days,
+            'absent_days' => (int) $t->absent_days,
             'note' => $t->note,
             'submitted_at' => $t->submitted_at,
             'decided_by' => $t->relationLoaded('decider') ? $t->decider?->name : null,

@@ -54,7 +54,7 @@ async function loadKpis(employeeId) {
     try { const { data } = await api.get('/performance/team-goals', { params: { employee_id: employeeId, per_page: 100 } }); kpis.value = data.data ?? []; } catch {}
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString('en-CA');
 
 function open(mode, row = null) {
     errors.value = {};

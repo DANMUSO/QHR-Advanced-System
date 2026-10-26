@@ -17,6 +17,9 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Actions taken during "Sign in as" are attributed to the admin as well as the impersonated account.
+        \App\Support\ActivityCauser::register();
+
         // Company-wide password policy. Breached-password checks run in production (k-anonymity lookup).
         Password::defaults(function () {
             $rule = Password::min(10)->letters()->mixedCase()->numbers()->symbols();

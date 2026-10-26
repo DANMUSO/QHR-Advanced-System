@@ -60,7 +60,7 @@ function toggleAll() { selected.value = allSelected.value ? [] : claims.value.ma
 
 function openPay(list) {
     payErrors.value = {};
-    payForm.value = { payment_method: 'mpesa', payment_reference: '', paid_on: new Date().toISOString().slice(0, 10), note: '' };
+    payForm.value = { payment_method: 'mpesa', payment_reference: '', paid_on: new Date().toLocaleDateString('en-CA'), note: '' };
     payModal.value = { open: true, claims: list };
 }
 

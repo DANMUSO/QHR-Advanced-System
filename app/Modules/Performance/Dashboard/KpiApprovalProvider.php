@@ -61,8 +61,9 @@ class KpiApprovalProvider implements ApprovalProvider
                     : 'Result '.rtrim(rtrim(number_format((float) $g->achieved, 2), '0'), '.').' of '.rtrim(rtrim(number_format((float) $g->target, 2), '0'), '.').' submitted',
                 'requested_at' => ($review ? $g->updated_at : ($g->submitted_at ?? $g->updated_at))?->toIso8601String(),
                 'url' => '/performance/manage?tab=approvals',
-                'approve_endpoint' => $review ? null : "/performance/goals/{$g->id}/approve",
-                'reject_endpoint' => $review ? "/performance/goals/{$g->id}/reject-review" : "/performance/goals/{$g->id}/reject",
+                // Opened and decided with the evidence in view, not from the inbox.
+                'approve_endpoint' => null,
+                'reject_endpoint' => null,
             ];
         })->values()->all();
     }

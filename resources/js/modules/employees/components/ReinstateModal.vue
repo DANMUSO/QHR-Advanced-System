@@ -14,7 +14,7 @@ import { label } from '../lib';
 const props = defineProps({ open: { type: Boolean, default: true }, employee: { type: Object, required: true } });
 const emit = defineEmits(['close', 'done']);
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString('en-CA');
 const meta = ref({ branches: [], departments: [], positions: [], levels: [], supervisors: [], contract_types: [] });
 const form = reactive({});
 const errors = ref({});

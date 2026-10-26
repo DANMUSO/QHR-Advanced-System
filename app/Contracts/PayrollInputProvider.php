@@ -15,7 +15,8 @@ use Carbon\CarbonInterface;
  *   half_pay_leave_days      float  working days paid at 50% (e.g. sick leave, half pay)
  *   overtime_hours_normal    float  weekday overtime hours (paid at the company's normal OT multiplier)
  *   overtime_hours_holiday   float  rest-day / public-holiday overtime hours (holiday multiplier)
- *   days_absent              float  unexplained absences (informational; deduction is a company policy choice)
+ *   days_absent              float  unexplained absences; payroll flags them (default) or deducts them as unpaid leave,
+ *                                   per the company's payroll setting absence_policy (flag | deduct | ignore)
  *   annual_leave_balance     float  current annual leave balance in days
  *   annual_leave_settlement  float  leavers only: annual leave accrued to the exit date (exit month pro-rated) net of
  *                                   leave taken; final dues encash it when positive and recover it when negative

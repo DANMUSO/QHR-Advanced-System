@@ -49,7 +49,7 @@ class RecentActivityWidget extends Widget
                 'log' => $a->log_name,
                 'event' => $a->event,
                 'subject' => $subjectLabels[class_basename((string) $a->subject_type)] ?? strtolower(preg_replace('/(?<!^)[A-Z]/', ' $0', class_basename((string) $a->subject_type))),
-                'causer' => $a->causer?->name ?? 'System',
+                'causer' => \App\Support\ActivityCauser::label($a),
                 'at' => $a->created_at,
             ]),
         ];

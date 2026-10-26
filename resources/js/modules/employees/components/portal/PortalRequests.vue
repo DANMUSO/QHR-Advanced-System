@@ -39,7 +39,7 @@ async function submitLetter() {
 }
 
 function openResign() {
-    resignForm.value = { notice_date: new Date().toISOString().slice(0, 10), last_working_day: '', reason: '', letter: null };
+    resignForm.value = { notice_date: new Date().toLocaleDateString('en-CA'), last_working_day: '', reason: '', letter: null };
     errors.value = {}; resignOpen.value = true;
 }
 async function submitResign() {

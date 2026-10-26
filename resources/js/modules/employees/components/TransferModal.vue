@@ -17,7 +17,7 @@ const props = defineProps({ open: Boolean, employee: { type: Object, default: nu
 const emit = defineEmits(['close', 'done']);
 const auth = useAuthStore();
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString('en-CA');
 const mode = ref('move');
 const picked = ref(null);
 const detail = ref(null);

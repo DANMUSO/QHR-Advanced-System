@@ -8,7 +8,7 @@ import Badge from '@/components/ui/Badge.vue';
 import Spinner from '@/components/ui/Spinner.vue';
 
 const emit = defineEmits(['recall']);
-const date = ref(new Date().toISOString().slice(0, 10));
+const date = ref(new Date().toLocaleDateString('en-CA'));
 const rows = ref([]);
 const loading = ref(true);
 

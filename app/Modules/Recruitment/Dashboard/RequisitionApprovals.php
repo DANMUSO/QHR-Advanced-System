@@ -33,7 +33,7 @@ class RequisitionApprovals implements ApprovalProvider
 
     private function query(User $user): ?Builder
     {
-        if (! $user->can('employees.create') && ! $user->hasRole('hr-admin')) {
+        if (! $user->can('recruitment.manage')) {
             return null;
         }
 

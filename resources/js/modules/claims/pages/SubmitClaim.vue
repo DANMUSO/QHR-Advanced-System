@@ -16,7 +16,7 @@ const errors = ref({});
 
 const defaultForm = () => ({
     claimant_type: 'self', dependant_id: '', other_name: '', other_relationship: '',
-    claim_date: new Date().toISOString().slice(0, 10),
+    claim_date: new Date().toLocaleDateString('en-CA'),
     provider_name: '', notes: '',
     items: [{ category: '', description: '', amount: '' }],
     receipts: [],

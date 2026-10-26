@@ -34,6 +34,7 @@ class RecruitmentController extends Controller
     public function requisitions(Request $request): JsonResponse
     {
         $page = Requisition::with(['position:id,title', 'department:id,name', 'requester:id,name', 'approver:id,name'])
+            ->when(! $request->user()->can('recruitment.manage'), fn ($q) => $q->where('requested_by', $request->user()->id))
             ->when($request->query('status'), fn ($q, $s) => $q->where('status', $s))
             ->when($request->query('search'), fn ($q, $s) => $q->where(fn ($w) => $w->where('requisition_number', 'like', "%{$s}%")
                 ->orWhereHas('position', fn ($p) => $p->where('title', 'like', "%{$s}%"))))
@@ -61,7 +62,7 @@ class RecruitmentController extends Controller
         return $this->decideRequisition($request, $id, 'reject');
     }
 
-    /** Someone other than the requester (anyone with employees.create, or HR) approves or rejects a requisition. */
+    /** Someone other than the requester (anyone with recruitment.manage) approves or rejects a requisition. */
     private function decideRequisition(Request $request, int $id, string $decision): JsonResponse
     {
         $req = Requisition::findOrFail($id);
@@ -88,7 +89,15 @@ class RecruitmentController extends Controller
             return true;
         }
 
-        return (int) $req->requested_by !== (int) $user->id && ($user->can('employees.create') || $user->hasRole('hr-admin'));
+        return (int) $req->requested_by !== (int) $user->id && $user->can('recruitment.manage');
+    }
+
+    /** A requester (without recruitment.manage) may only change their own requisition while it is not yet approved. */
+    private function assertOwnRequisition(Request $request, Requisition $req): void
+    {
+        if (! $request->user()->can('recruitment.manage')) {
+            abort_unless((int) $req->requested_by === (int) $request->user()->id, 403, 'You can only change your own requisitions.');
+        }
     }
 
     public function storeRequisition(Request $request): JsonResponse
@@ -106,6 +115,7 @@ class RecruitmentController extends Controller
     public function updateRequisition(Request $request, int $id): JsonResponse
     {
         $req = Requisition::findOrFail($id);
+        $this->assertOwnRequisition($request, $req);
         abort_if(in_array($req->status, ['approved', 'filled'], true), 422, 'Approved requisitions cannot be edited.');
         $data = $this->validateRequisition($request, true);
         if ($req->status === 'rejected' && empty($data['status'])) {
@@ -116,9 +126,10 @@ class RecruitmentController extends Controller
         return response()->json(['data' => $req->fresh(), 'message' => 'Requisition updated.']);
     }
 
-    public function destroyRequisition(int $id): JsonResponse
+    public function destroyRequisition(Request $request, int $id): JsonResponse
     {
         $req = Requisition::findOrFail($id);
+        $this->assertOwnRequisition($request, $req);
         abort_if(Posting::where('requisition_id', $req->id)->exists(), 422, 'This requisition has job postings. Close the postings instead of deleting it.');
         $req->delete();
 

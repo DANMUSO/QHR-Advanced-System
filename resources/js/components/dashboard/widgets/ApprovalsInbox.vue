@@ -11,7 +11,8 @@ defineProps({ data: Object, title: String });
 const emit = defineEmits(['refresh']);
 const ui   = useUiStore();
 const busy = ref(null);
-const confirmReject = ref(null); // item awaiting reject confirmation
+// Item being decided from the inbox: shows its details, takes a comment (required to reject).
+const decision = ref(null); // { item, approve, comment, error }
 
 const typeColor = {
     leave:    'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
@@ -23,29 +24,23 @@ const typeColor = {
 };
 const tc = t => typeColor[t] ?? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
 
-async function approve(item) {
-    busy.value = item.id + 'approve';
-    try {
-        await api.post(item.approve_endpoint);
-        ui.toast(`${titleCase(item.type)} approved.`);
-        emit('refresh');
-    } catch (e) { ui.toast(errorMessage(e), 'error'); }
-    finally { busy.value = null; }
+function openDecision(item, approve) {
+    decision.value = { item, approve, comment: '', error: '' };
 }
 
-async function confirmAndReject(item) {
-    confirmReject.value = item;
-}
-
-async function doReject() {
-    const item = confirmReject.value;
-    confirmReject.value = null;
-    busy.value = item.id + 'reject';
+async function submitDecision() {
+    const d = decision.value;
+    const comment = d.comment.trim();
+    if (!d.approve && !comment) { d.error = 'Give a reason; the employee will see it.'; return; }
+    busy.value = d.item.id + (d.approve ? 'approve' : 'reject');
     try {
-        await api.post(item.reject_endpoint, { reason: 'Rejected from dashboard' });
-        ui.toast(`${titleCase(item.type)} rejected.`);
+        // Modules name the field differently (note / comment / reason); send the comment under each.
+        const payload = d.approve ? (comment ? { note: comment, comment } : {}) : { reason: comment, comment };
+        await api.post(d.approve ? d.item.approve_endpoint : d.item.reject_endpoint, payload);
+        ui.toast(`${titleCase(d.item.type)} ${d.approve ? 'approved' : 'rejected'}.`);
+        decision.value = null;
         emit('refresh');
-    } catch (e) { ui.toast(errorMessage(e), 'error'); }
+    } catch (e) { d.error = errorMessage(e); }
     finally { busy.value = null; }
 }
 </script>
@@ -81,30 +76,35 @@ async function doReject() {
                 <div v-if="item.approve_endpoint" class="flex shrink-0 gap-1">
                     <button aria-label="Approve"
                         class="rounded-lg p-1.5 text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-40 dark:hover:bg-emerald-500/10"
-                        :disabled="!!busy" @click="approve(item)">
+                        :disabled="!!busy" @click="openDecision(item, true)">
                         <Check class="size-4" />
                     </button>
                     <button aria-label="Reject"
                         class="rounded-lg p-1.5 text-rose-500 transition hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-500/10"
-                        :disabled="!!busy" @click="confirmAndReject(item)">
+                        :disabled="!!busy" @click="openDecision(item, false)">
                         <X class="size-4" />
                     </button>
                 </div>
             </li>
         </ul>
 
-        <!-- Reject confirmation -->
+        <!-- Decision: the details first, an optional comment to approve, a reason to reject -->
         <Transition name="fade">
-            <div v-if="confirmReject"
-                class="absolute inset-0 z-10 flex items-center justify-center bg-white/90 p-6 dark:bg-slate-900/90">
-                <div class="w-full max-w-xs rounded-2xl border border-slate-200 bg-white p-5 shadow-lg dark:border-slate-700 dark:bg-slate-800">
-                    <p class="text-sm font-semibold text-slate-900 dark:text-white">Reject this request?</p>
-                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        "{{ confirmReject.title }}" will be rejected.
-                    </p>
+            <div v-if="decision"
+                class="absolute inset-0 z-10 flex items-center justify-center bg-white/90 p-4 dark:bg-slate-900/90">
+                <div class="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                    <p class="text-sm font-semibold text-slate-900 dark:text-white">{{ decision.approve ? 'Approve' : 'Reject' }} {{ titleCase(decision.item.type) }}?</p>
+                    <p class="mt-1 text-sm text-slate-700 dark:text-slate-200">{{ decision.item.title }}</p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">{{ decision.item.subtitle }}</p>
+                    <RouterLink :to="decision.item.url" class="mt-1 inline-block text-xs text-brand-600 hover:underline">Open full details</RouterLink>
+                    <label class="label mt-3">{{ decision.approve ? 'Comment (optional)' : 'Reason (required)' }}</label>
+                    <textarea v-model="decision.comment" rows="2" class="input" maxlength="500" />
+                    <p v-if="decision.error" class="mt-1 text-xs text-red-500">{{ decision.error }}</p>
                     <div class="mt-4 flex justify-end gap-2">
-                        <button class="btn-secondary text-xs" @click="confirmReject = null">Cancel</button>
-                        <button class="btn-danger text-xs" @click="doReject">Reject</button>
+                        <button class="btn-secondary text-xs" :disabled="!!busy" @click="decision = null">Cancel</button>
+                        <button :class="decision.approve ? 'btn-primary' : 'btn-danger'" class="text-xs" :disabled="!!busy" @click="submitDecision">
+                            {{ decision.approve ? 'Approve' : 'Reject' }}
+                        </button>
                     </div>
                 </div>
             </div>

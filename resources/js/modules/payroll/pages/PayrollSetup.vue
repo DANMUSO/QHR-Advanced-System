@@ -50,7 +50,7 @@ async function saveSettings() {
 }
 
 // ── calculator (/payroll/preview) ────────────────────────
-const calc = ref({ basic: 50000, allowances: 0, non_taxable: 0, pension_percent: 0, insurance_premium: 0, date: new Date().toISOString().slice(0, 10) });
+const calc = ref({ basic: 50000, allowances: 0, non_taxable: 0, pension_percent: 0, insurance_premium: 0, date: new Date().toLocaleDateString('en-CA') });
 const calcResult = ref(null);
 const calcRows = [
     ['gross_pay', 'Gross pay'], ['nssf_employee', 'NSSF (employee)'], ['shif', 'SHIF'], ['ahl_employee', 'Housing levy'],
@@ -185,7 +185,7 @@ const statutoryForm = ref({});
 const STAT_FIELDS = ['type', 'name', 'lower_limit', 'upper_limit', 'rate', 'employer_rate', 'amount', 'cap', 'tax_deductible', 'effective_from', 'effective_to', 'notes'];
 function openStatutory(row = null) {
     errors.value = {};
-    const base = row ?? { type: 'nssf', name: '', tax_deductible: false, effective_from: new Date().toISOString().slice(0, 10) };
+    const base = row ?? { type: 'nssf', name: '', tax_deductible: false, effective_from: new Date().toLocaleDateString('en-CA') };
     statutoryForm.value = Object.fromEntries(STAT_FIELDS.map(f => [f, base[f] ?? (f === 'tax_deductible' ? false : '')]));
     statutoryModal.value = { open: true, rowId: row?.id ?? null, label: row ? row.name : 'new statutory rate' };
 }
@@ -404,6 +404,15 @@ onMounted(async () => {
                             <option value="national_id">Employee's national ID number</option>
                         </select>
                         <p class="mt-1 text-xs text-slate-500">Encrypts emailed payslip PDFs. Employees without an ID number receive an unprotected PDF.</p>
+                    </div>
+                    <div>
+                        <label class="label">Unexplained absences (from attendance)</label>
+                        <select v-model="settings.absence_policy" class="input">
+                            <option value="flag">Flag on the payroll line for review (recommended)</option>
+                            <option value="deduct">Deduct as unpaid leave</option>
+                            <option value="ignore">Ignore (company does not track attendance)</option>
+                        </select>
+                        <p class="mt-1 text-xs text-slate-500">Absent = a working day with no clock-in and no approved leave.</p>
                     </div>
                     <div>
                         <label class="label">Sign-off by staff paid in the run</label>

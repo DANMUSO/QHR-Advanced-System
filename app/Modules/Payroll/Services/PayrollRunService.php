@@ -249,6 +249,13 @@ class PayrollRunService
                 }
 
                 $inputs = ($isRegular || $isFinal) ? $this->inputs->collect($employee, $periodStart, $periodEnd) : [];
+                // Unexplained absences (Attendance): flagged for review by default, deducted like unpaid leave when the
+                // company chooses, ignored when it does not track attendance.
+                $absentDays = (float) ($inputs['days_absent'] ?? 0);
+                $absencePolicy = (string) PayrollSettings::get($company, 'absence_policy');
+                if ($absentDays > 0 && $absencePolicy === 'deduct') {
+                    $inputs['unpaid_leave_days'] = (float) ($inputs['unpaid_leave_days'] ?? 0) + $absentDays;
+                }
 
                 if ($isFinal) {
                     // Leave accrued to the exit date, net of leave taken (Leave module): positive → encash,
@@ -316,6 +323,10 @@ class PayrollRunService
                 }
                 if ($includeSalary && $basic <= 0) {
                     $flags[] = ['code' => 'zero_basic', 'severity' => 'error', 'message' => 'Basic salary is zero.'];
+                }
+                if ($absentDays > 0 && $absencePolicy !== 'ignore') {
+                    $flags[] = ['code' => 'unexplained_absence', 'severity' => 'warning', 'message' => rtrim(rtrim(number_format($absentDays, 1), '0'), '.')
+                        .' unexplained absence day(s) '.($absencePolicy === 'deduct' ? 'deducted as unpaid.' : 'not deducted. Approve leave, correct the punches, or switch the absence policy to deduct.')];
                 }
 
                 $line = PayrollRunEmployee::create([

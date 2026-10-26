@@ -50,11 +50,13 @@ class AttendanceApprovalProvider implements ApprovalProvider
                 'id' => 'ts-'.$t->id,
                 'type' => 'timesheet',
                 'title' => ($t->employee?->full_name ?? 'Employee').' · timesheet',
-                'subtitle' => 'Week of '.$t->week_start->format('j M').' · '.round($t->worked_minutes / 60, 1).' h',
+                'subtitle' => $t->week_start->format('j M').' – '.$t->week_start->copy()->addDays(6)->format('j M').' · '.round($t->worked_minutes / 60, 1).' h'
+                    .($t->incomplete_days ? ' · '.$t->incomplete_days.' missing clock-out' : '').($t->absent_days ? ' · '.$t->absent_days.' absent' : ''),
                 'requested_at' => $t->submitted_at,
                 'url' => '/attendance/manage?tab=timesheets',
-                'approve_endpoint' => "/attendance/timesheets/{$t->id}/approve",
-                'reject_endpoint' => "/attendance/timesheets/{$t->id}/reject",
+                // Opened and reviewed day by day, not approved blind from the inbox.
+                'approve_endpoint' => null,
+                'reject_endpoint' => null,
             ]);
 
         return $overtime->concat($sheets)->sortByDesc('requested_at')->take($limit)->values()->all();

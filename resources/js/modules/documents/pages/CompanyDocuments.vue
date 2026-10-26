@@ -79,7 +79,7 @@ function open(row = null) {
         open: true, id: row?.id ?? null, file: null, errors: {}, saving: false,
         form: row
             ? { category: row.category, title: row.title, description: row.description ?? '', effective_date: row.effective_date ?? '', audience: row.audience, audience_ids: [...row.audience_ids], requires_acknowledgement: row.requires_acknowledgement, referred_by_department_id: row.referred_by_department_id ?? '', reset_acknowledgements: false }
-            : { category: tab.value, title: '', description: '', effective_date: new Date().toISOString().slice(0, 10), audience: 'all', audience_ids: [], requires_acknowledgement: tab.value === 'policy', referred_by_department_id: '', notify: true },
+            : { category: tab.value, title: '', description: '', effective_date: new Date().toLocaleDateString('en-CA'), audience: 'all', audience_ids: [], requires_acknowledgement: tab.value === 'policy', referred_by_department_id: '', notify: true },
     });
 }
 

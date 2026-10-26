@@ -59,7 +59,7 @@ function switchTab(t) { tab.value = t; load(); }
 
 function openPay(row) {
     errors.value = {};
-    form.value = { payment_method: 'mpesa', payment_reference: '', paid_on: new Date().toISOString().slice(0, 10) };
+    form.value = { payment_method: 'mpesa', payment_reference: '', paid_on: new Date().toLocaleDateString('en-CA') };
     modal.value = { open: true, row };
 }
 

@@ -114,7 +114,7 @@ onMounted(load);
                         </p>
                         <div v-if="g.target" class="mt-2 max-w-sm">
                             <div class="h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><div class="h-full rounded-full bg-brand-500" :style="{ width: `${g.progress_pct ?? 0}%` }" /></div>
-                            <p class="mt-1 text-xs text-slate-400">Achieved {{ g.achieved ?? 0 }} ({{ g.progress_pct ?? 0 }}%)<span v-if="g.score != null"> · score {{ g.score }}</span></p>
+                            <p class="mt-1 text-xs text-slate-400">Achieved {{ g.achieved ?? 0 }} ({{ g.actual_pct ?? g.progress_pct ?? 0 }}%<template v-if="g.actual_pct != null && g.achievement_pct != null && Number(g.actual_pct) > Number(g.achievement_pct)">, scored at the {{ Number(g.achievement_pct) }}% cap</template>)<span v-if="g.score != null"> · score {{ g.score }}</span></p>
                         </div>
                         <p v-if="g.rejection_reason && g.status === 'in_progress'" class="mt-2 text-xs text-red-600 dark:text-red-400">Returned: {{ g.rejection_reason }}</p>
                         <p v-if="g.review_reason && g.status === 'under_review'" class="mt-2 text-xs text-orange-600 dark:text-orange-400">Review requested: {{ g.review_reason }}</p>

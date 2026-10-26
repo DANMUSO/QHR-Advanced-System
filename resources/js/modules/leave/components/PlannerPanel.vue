@@ -18,7 +18,7 @@ const showPending = ref(true);
 
 const pad = (n) => String(n).padStart(2, '0');
 const iso = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
-const todayIso = new Date().toISOString().slice(0, 10);
+const todayIso = new Date().toLocaleDateString('en-CA');
 
 async function load() {
     loading.value = true;

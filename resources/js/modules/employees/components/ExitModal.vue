@@ -16,7 +16,7 @@ import EmployeePicker from './EmployeePicker.vue';
 const props = defineProps({ open: Boolean, employee: { type: Object, default: null }, prefill: { type: Object, default: null } });
 const emit = defineEmits(['close', 'done']);
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString('en-CA');
 const picked = ref(null);
 const form = reactive({ exit_date: today(), notice_date: '', reason: '', comments: '', new_supervisor_id: '' });
 const overrides = ref({});
