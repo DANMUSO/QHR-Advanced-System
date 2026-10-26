@@ -37,6 +37,11 @@ return [
         \App\Models\Company::created(fn (\App\Models\Company $company) => \App\Modules\Employees\Support\SideEffects::run(
             'leave: default leave types for new company', fn () => \App\Modules\Leave\Models\LeaveType::seedDefaults($company)));
 
+        // A new hire's balances exist from day one, so HR's Balances & Ledger shows them before the employee
+        // first opens My Leave (balances used to be created lazily on that first visit).
+        \Illuminate\Support\Facades\Event::listen('App\Modules\Employees\Events\EmployeeHired', fn ($event) => \App\Modules\Employees\Support\SideEffects::run(
+            'leave: opening balances for new hire', fn () => app(\App\Modules\Leave\Services\LeaveBalanceService::class)->summary($event->employee)));
+
         // New employee record after a company transfer / reinstatement → carried-over or fresh leave balances.
         \Illuminate\Support\Facades\Event::listen('App\Modules\Employees\Events\EmployeeTransferred', [OpenBalancesOnMove::class, 'transferred']);
         \Illuminate\Support\Facades\Event::listen('App\Modules\Employees\Events\EmployeeReinstated', [OpenBalancesOnMove::class, 'reinstated']);

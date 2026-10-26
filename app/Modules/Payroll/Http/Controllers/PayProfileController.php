@@ -19,6 +19,13 @@ use Illuminate\Validation\Rule;
 
 class PayProfileController extends PayrollController
 {
+
+    /** Nobody edits their own pay (salary, components, payment details or one-off run items), whatever their role. */
+    public static function assertNotOwnPay(Request $request, int $employeeId): void
+    {
+        abort_if(Employee::withoutGlobalScopes()->whereKey($employeeId)->where('user_id', $request->user()->id)->exists(), 403,
+            'Conflict of interest: you cannot change your own pay. Ask another payroll officer.');
+    }
     /** Employees with their pay profile summary. */
     public function index(Request $request): JsonResponse
     {
@@ -101,6 +108,7 @@ class PayProfileController extends PayrollController
 
     public function update(Request $request, Employee $employee): JsonResponse
     {
+        self::assertNotOwnPay($request, $employee->id);
         $data = $request->validate([
             'payment_method' => ['required', Rule::in(['bank', 'mpesa', 'cash'])],
             'bank_name' => ['nullable', 'required_if:payment_method,bank', 'string', 'max:100'],
@@ -165,6 +173,7 @@ class PayProfileController extends PayrollController
     /** Versioned salary change; the profile's current basic follows the latest effective change. */
     public function changeSalary(Request $request, Employee $employee): JsonResponse
     {
+        self::assertNotOwnPay($request, $employee->id);
         $data = $request->validate([
             'basic_salary' => ['required', 'numeric', 'min:0', 'max:100000000'],
             'effective_date' => ['required', 'date'],
@@ -196,6 +205,7 @@ class PayProfileController extends PayrollController
 
     public function storeComponent(Request $request, Employee $employee): JsonResponse
     {
+        self::assertNotOwnPay($request, $employee->id);
         $data = $this->validateAssignment($request, $employee);
         $a = PayrollEmployeeComponent::create($data + ['company_id' => $employee->company_id, 'employee_id' => $employee->id]);
 
@@ -204,6 +214,7 @@ class PayProfileController extends PayrollController
 
     public function updateComponent(Request $request, Employee $employee, PayrollEmployeeComponent $assignment): JsonResponse
     {
+        self::assertNotOwnPay($request, $employee->id);
         abort_unless((int) $assignment->employee_id === $employee->id, 404);
         $assignment->update($this->validateAssignment($request, $employee));
 
@@ -213,6 +224,7 @@ class PayProfileController extends PayrollController
     /** Ends the assignment (keeps history) unless it never took effect. */
     public function destroyComponent(Request $request, Employee $employee, PayrollEmployeeComponent $assignment): JsonResponse
     {
+        self::assertNotOwnPay($request, $employee->id);
         abort_unless((int) $assignment->employee_id === $employee->id, 404);
         if ($assignment->effective_from->isFuture()) {
             $assignment->delete();

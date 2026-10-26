@@ -5,6 +5,7 @@ import { Play, CheckCircle, DollarSign, RotateCcw, X, Download, Eye, FileText, T
 import api, { errorMessage, fieldErrors } from '@/lib/api';
 import { formatDateTime, label } from '@/lib/format';
 import { useUiStore } from '@/stores/ui';
+import { useAuthStore } from '@/stores/auth';
 import Badge from '@/components/ui/Badge.vue';
 import DataTable from '@/components/ui/DataTable.vue';
 import Modal from '@/components/ui/Modal.vue';
@@ -15,6 +16,7 @@ import Spinner from '@/components/ui/Spinner.vue';
 const route = useRoute();
 const router = useRouter();
 const ui = useUiStore();
+const auth = useAuthStore();
 const run = ref(null);
 const meta = ref({ statutory: null, audit: [], exceptions: [], cutoff: null });
 const employees = ref([]);
@@ -80,6 +82,17 @@ async function loadLines(page = 1) {
         employees.value = data.data;
         paginator.value = { current_page: data.current_page, last_page: data.last_page, total: data.total, from: data.from, to: data.to };
     } finally { linesLoading.value = false; }
+}
+
+async function allowOwnPaySignoff() {
+    if (!confirm('Allow staff who are paid in a payroll run to review and approve it? Use this only when every reviewer and approver is on the payroll. Each such sign-off is logged.')) return;
+    busy.value = 'own-pay';
+    try {
+        const { data } = await api.put('/payroll/settings/own-pay-signoff', { allowed: true });
+        ui.toast(data.message, 'success');
+        await load();
+    } catch (e) { ui.toast(errorMessage(e), 'error'); }
+    finally { busy.value = ''; }
 }
 
 async function load() {
@@ -320,6 +333,11 @@ onMounted(load);
                 {{ statusHelp[run.status] }}
                 <span v-if="can.own_pay_blocked" class="mt-1 block font-medium text-amber-700 dark:text-amber-300">
                     This run includes your own salary, so you cannot review, approve or mark it paid (conflict of interest). Another authorised user must do it.
+                    <template v-if="auth.can('settings.manage')">
+                        If every reviewer and approver in your company is on this payroll,
+                        <button class="underline hover:no-underline" :disabled="!!busy" @click="allowOwnPaySignoff">allow sign-off by staff paid in the run</button>
+                        (recorded in the audit trail).
+                    </template>
                 </span>
                 <span v-else-if="run.status === 'reviewed' && !can.approve" class="block text-xs text-amber-700 dark:text-amber-300">
                     You cannot approve this run (segregation of duties: approver must differ from the preparer, calculator and reviewer, and hold payroll approval rights).

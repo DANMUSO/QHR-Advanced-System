@@ -128,6 +128,12 @@ class LifecycleService
         if (Employee::withoutGlobalScopes()->where('previous_employee_id', $old->id)->exists()) {
             throw ValidationException::withMessages(['employee' => 'This record has already been re-instated or transferred.']);
         }
+        // The new period must start after the old one ended, or payroll pays (and charges statutory deductions on)
+        // the overlapping days twice — once on each employment record.
+        $exitDate = ExitRecord::withoutGlobalScopes()->where('employee_id', $old->id)->where('status', '!=', 'cancelled')->latest('exit_date')->value('exit_date');
+        if ($exitDate && ! empty($employment['date_of_joining']) && \Carbon\Carbon::parse($employment['date_of_joining'])->lte(\Carbon\Carbon::parse($exitDate))) {
+            throw ValidationException::withMessages(['date_of_joining' => 'The return date must be after the previous exit date ('.\Carbon\Carbon::parse($exitDate)->format('j M Y').').']);
+        }
 
         return DB::transaction(function () use ($old, $employment, $sendActivation, $by) {
             $new = $this->employees->successor($old, $employment, $old->company_id);

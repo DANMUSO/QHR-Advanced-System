@@ -46,6 +46,8 @@ const props = defineProps({
     error: Boolean,
     disabled: Boolean,
     clearable: { type: Boolean, default: true },
+    // ids that may not be picked (e.g. yourself as your own handover colleague)
+    exclude: { type: Array, default: () => [] },
 });
 const model = defineModel({ type: [Number, String, null], default: '' });
 
@@ -68,7 +70,9 @@ onMounted(async () => {
 const selected = computed(() => options.value.find((o) => String(o.id) === String(model.value)));
 const filtered = computed(() => {
     const q = query.value.toLowerCase().trim();
-    const list = q ? options.value.filter((o) => `${src.label(o)} ${src.sub?.(o) ?? ''}`.toLowerCase().includes(q)) : options.value;
+    const excluded = new Set(props.exclude.filter((v) => v !== null && v !== '').map(String));
+    const pool = excluded.size ? options.value.filter((o) => !excluded.has(String(o.id))) : options.value;
+    const list = q ? pool.filter((o) => `${src.label(o)} ${src.sub?.(o) ?? ''}`.toLowerCase().includes(q)) : pool;
     return list.slice(0, 100);
 });
 watch(filtered, () => (active.value = 0));

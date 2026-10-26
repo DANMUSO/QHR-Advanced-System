@@ -60,6 +60,34 @@ class ComplianceService
         return $case;
     }
 
+    /**
+     * A disciplinary case closed with a warning outcome issues the warning (once per case) with its letter, and
+     * tells the employee. Written warnings stay on file for 6 months, final warnings for 12.
+     */
+    public function warningFromCase(DisciplinaryCase $case, ?User $by): ?WarningLetter
+    {
+        $level = ['warning' => 'written', 'final_warning' => 'final'][$case->outcome] ?? null;
+        if (! $level || ! $case->employee_id) {
+            return null;
+        }
+        $warning = WarningLetter::withoutGlobalScopes()->firstOrNew(['disciplinary_case_id' => $case->id]);
+        if ($warning->exists) {
+            return $warning;
+        }
+        $warning->forceFill([
+            'company_id' => $case->company_id, 'employee_id' => $case->employee_id, 'level' => $level,
+            'reason' => trim(($case->outcome_notes ?: 'Outcome of disciplinary case').' (case '.$case->case_number.')'),
+            'issued_date' => today(), 'expiry_date' => today()->addMonths($level === 'final' ? 12 : 6), 'issued_by_user_id' => $by?->id,
+        ])->save();
+        $letter = $this->generateLetter($warning, $by);
+        $this->notifyEmployee(Employee::withoutGlobalScope('company')->find($case->employee_id), 'Warning issued',
+            "A {$level} warning has been issued following disciplinary case {$case->case_number}.", '/portal?tab=documents');
+        activity('compliance')->performedOn($case)->causedBy($by)->withProperties(['warning_id' => $warning->id, 'letter_id' => $letter->id])
+            ->log('Warning issued from disciplinary outcome');
+
+        return $warning;
+    }
+
     /** Generate the Employees "warning" letter for a warning and link it. */
     public function generateLetter(WarningLetter $warning, ?User $by): EmployeeLetter
     {

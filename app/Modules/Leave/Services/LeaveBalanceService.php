@@ -144,7 +144,10 @@ class LeaveBalanceService
         return $types->filter(fn (LeaveType $t) => $t->eligible($employee))->map(function (LeaveType $t) use ($employee, $year) {
             $ledger = $t->ledgerType();
             $balance = $this->ensure($employee, $ledger, $year);
-            $pending = $ledger->has_balance ? $this->pendingDays($employee, $ledger, $year) : 0.0;
+            $pending = $this->pendingDays($employee, $ledger, $year);
+            // Types without a balance (e.g. unpaid) have no ledger row: count the approved requests instead.
+            $takenNoBalance = $ledger->has_balance ? null : (float) LeaveRequest::withoutGlobalScopes()->where('employee_id', $employee->id)
+                ->where('leave_type_id', $t->id)->taken()->whereYear('start_date', $year)->sum('days');
 
             return [
                 'leave_type_id' => $t->id,
@@ -164,7 +167,7 @@ class LeaveBalanceService
                 'accrued' => $balance?->accrued ?? 0,
                 'carried_forward' => $balance?->carried_forward ?? 0,
                 'adjusted' => $balance?->adjusted ?? 0,
-                'taken' => $balance?->taken ?? 0,
+                'taken' => $takenNoBalance ?? $balance?->taken ?? 0,
                 'forfeited' => $balance?->forfeited ?? 0,
                 'earned' => $balance?->earned ?? 0,
                 'available' => $balance?->available ?? null,

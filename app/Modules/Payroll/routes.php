@@ -11,6 +11,9 @@ use App\Modules\Payroll\Http\Controllers\StructureController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('payroll')->group(function () {
+    // HR decides whether staff paid in a run may sign it off (small companies where every approver is on the payroll).
+    Route::put('settings/own-pay-signoff', [SetupController::class, 'updateOwnPaySignoff'])->middleware('permission:settings.manage');
+
     // Employee self-service
     Route::middleware('permission:payroll.view-own')->group(function () {
         Route::get('my-payslips', [PayslipController::class, 'index']);

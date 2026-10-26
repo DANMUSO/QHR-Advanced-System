@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
-import { Plus, BookOpen } from 'lucide-vue-next';
+import { Plus, BookOpen, Users } from 'lucide-vue-next';
+import { label } from '@/lib/format';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
 import { useUiStore } from '@/stores/ui';
 import Badge from '@/components/ui/Badge.vue';
@@ -85,6 +86,26 @@ async function save() {
     } finally { saving.value = false; }
 }
 
+// ── Enrol staff in a course (HR / L&D) ─────────────────────
+const enrol = ref({ open: false, course: null, rows: [], loading: false, employeeId: '', saving: false, error: '' });
+async function openEnrol(course) {
+    enrol.value = { open: true, course, rows: [], loading: true, employeeId: '', saving: false, error: '' };
+    try { const { data } = await api.get(`/learning/catalogue/${course.id}/enrollments`); enrol.value.rows = data.data ?? []; }
+    catch (e) { enrol.value.error = errorMessage(e); }
+    finally { enrol.value.loading = false; }
+}
+async function addEnrolment() {
+    if (!enrol.value.employeeId) return;
+    enrol.value.saving = true; enrol.value.error = '';
+    try {
+        const { data } = await api.post(`/learning/catalogue/${enrol.value.course.id}/enrollments`, { employee_ids: [enrol.value.employeeId] });
+        ui.toast(data.message ?? 'Enrolled.', 'success');
+        await openEnrol(enrol.value.course);
+        await load();
+    } catch (e) { enrol.value.error = errorMessage(e); }
+    finally { enrol.value.saving = false; }
+}
+
 onMounted(load);
 </script>
 
@@ -118,7 +139,7 @@ onMounted(load);
                 <Badge :color="row.delivery === 'online' ? 'blue' : row.delivery === 'classroom' ? 'green' : 'yellow'">{{ row.delivery }}</Badge>
             </template>
             <template #actions="{ row }">
-                <button class="btn-ghost !p-1.5" title="View"><BookOpen class="size-4" /></button>
+                <button class="btn-ghost !p-1.5" title="Enrolments" @click="openEnrol(row)"><Users class="size-4" /></button>
             </template>
         </DataTable>
 
@@ -197,6 +218,26 @@ onMounted(load);
                 <button class="btn-secondary" @click="modal = false">Cancel</button>
                 <button class="btn-primary" :disabled="saving" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
             </template>
+        </Modal>
+        <Modal :open="enrol.open" :title="`Enrolments – ${enrol.course?.title ?? enrol.course?.name ?? ''}`" size="lg" @close="enrol.open = false">
+            <div class="space-y-4">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <div class="flex-1">
+                        <label class="label">Add employee</label>
+                        <LookupSelect v-model="enrol.employeeId" kind="employees" placeholder="Search staff…" :exclude="enrol.rows.map((r) => r.employee_id)" />
+                    </div>
+                    <button class="btn-primary" :disabled="!enrol.employeeId || enrol.saving" @click="addEnrolment"><Plus class="size-4" /> Enrol</button>
+                </div>
+                <p v-if="enrol.error" class="text-sm text-red-600">{{ enrol.error }}</p>
+                <div v-if="enrol.loading" class="flex justify-center py-6"><Spinner /></div>
+                <p v-else-if="!enrol.rows.length" class="py-6 text-center text-sm text-slate-400">Nobody is enrolled yet.</p>
+                <ul v-else class="divide-y divide-slate-100 dark:divide-slate-800">
+                    <li v-for="r in enrol.rows" :key="r.id" class="flex items-center justify-between gap-3 py-2 text-sm">
+                        <span class="font-medium text-slate-800 dark:text-slate-100">{{ r.employee?.name ?? '—' }}</span>
+                        <span class="flex items-center gap-2 text-xs text-slate-500">{{ r.progress ?? 0 }}% <Badge>{{ label(r.status) }}</Badge></span>
+                    </li>
+                </ul>
+            </div>
         </Modal>
     </div>
 </template>

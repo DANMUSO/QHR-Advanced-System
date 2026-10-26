@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Plus, X, Check } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
+import { label } from '@/lib/format';
 import swal from '@/lib/swal';
 import { useAuthStore } from '@/stores/auth';
 import Avatar from '@/components/ui/Avatar.vue';
@@ -102,6 +103,8 @@ const expensesLoading = ref(false);
 const expenseModal = ref(false);
 const expenseForm = ref({});
 const expenseErrors = ref({});
+// Must match App\Modules\Benefits\Models\ExpenseClaim::CATEGORIES.
+const EXPENSE_CATEGORIES = ['travel', 'accommodation', 'meals', 'transport', 'fuel', 'airtime', 'communication', 'stationery', 'training', 'client_entertainment', 'other'];
 const expenseSaving = ref(false);
 const expenseStatusColors = { draft: 'slate', submitted: 'blue', approved: 'green', rejected: 'red', paid: 'emerald', pending: 'yellow', completed: 'blue', repaid: 'blue' };
 const expenseEndpoints = { expenses: '/expenses', travel: '/expenses/travel' };
@@ -352,19 +355,19 @@ onMounted(() => { if (hasEmployee) loaders[tab.value]?.(); });
                 <template v-if="expenseTab === 'expenses'">
                     <div><label class="label">Description</label><input v-model="expenseForm.description" type="text" class="input" /><p v-if="expenseErrors.description" class="field-error">{{ expenseErrors.description }}</p></div>
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div><label class="label">Category</label><select v-model="expenseForm.category" class="input"><option value="transport">Transport</option><option value="accommodation">Accommodation</option><option value="meals">Meals</option><option value="other">Other</option></select></div>
+                        <div><label class="label">Category</label><select v-model="expenseForm.category" class="input"><option v-for="c in EXPENSE_CATEGORIES" :key="c" :value="c">{{ label(c) }}</option></select><p v-if="expenseErrors.category" class="field-error">{{ expenseErrors.category }}</p></div>
                         <div><label class="label">Amount (KES)</label><input v-model="expenseForm.amount" type="number" class="input" /><p v-if="expenseErrors.amount" class="field-error">{{ expenseErrors.amount }}</p></div>
                     </div>
-                    <div><label class="label">Date</label><input v-model="expenseForm.expense_date" type="date" class="input" /></div>
+                    <div><label class="label">Date</label><input v-model="expenseForm.expense_date" type="date" class="input" /><p v-if="expenseErrors.expense_date" class="field-error">{{ expenseErrors.expense_date }}</p></div>
                 </template>
                 <template v-else>
-                    <div><label class="label">Destination</label><input v-model="expenseForm.destination" type="text" class="input" /></div>
-                    <div><label class="label">Purpose</label><input v-model="expenseForm.purpose" type="text" class="input" /></div>
+                    <div><label class="label">Destination</label><input v-model="expenseForm.destination" type="text" class="input" /><p v-if="expenseErrors.destination" class="field-error">{{ expenseErrors.destination }}</p></div>
+                    <div><label class="label">Purpose</label><input v-model="expenseForm.purpose" type="text" class="input" /><p v-if="expenseErrors.purpose" class="field-error">{{ expenseErrors.purpose }}</p></div>
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div><label class="label">Departure</label><input v-model="expenseForm.departure_date" type="date" class="input" /></div>
-                        <div><label class="label">Return</label><input v-model="expenseForm.return_date" type="date" class="input" /></div>
+                        <div><label class="label">Departure</label><input v-model="expenseForm.departure_date" type="date" class="input" /><p v-if="expenseErrors.departure_date" class="field-error">{{ expenseErrors.departure_date }}</p></div>
+                        <div><label class="label">Return</label><input v-model="expenseForm.return_date" type="date" class="input" /><p v-if="expenseErrors.return_date" class="field-error">{{ expenseErrors.return_date }}</p></div>
                     </div>
-                    <div><label class="label">Estimated Cost (KES)</label><input v-model="expenseForm.estimated_cost" type="number" class="input" /></div>
+                    <div><label class="label">Estimated Cost (KES)</label><input v-model="expenseForm.estimated_cost" type="number" class="input" /><p v-if="expenseErrors.estimated_cost" class="field-error">{{ expenseErrors.estimated_cost }}</p></div>
                 </template>
             </div>
             <template #footer>

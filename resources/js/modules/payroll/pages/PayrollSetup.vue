@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Users } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
 import { label } from '@/lib/format';
 import { useUiStore } from '@/stores/ui';
+import { useAuthStore } from '@/stores/auth';
 import Badge from '@/components/ui/Badge.vue';
 import DataTable from '@/components/ui/DataTable.vue';
 import Modal from '@/components/ui/Modal.vue';
@@ -13,6 +14,7 @@ import Spinner from '@/components/ui/Spinner.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const ui = useUiStore();
+const auth = useAuthStore();
 const tab = ref('structures');
 const tabs = [
     { key: 'structures', label: 'Pay Structures' },
@@ -402,6 +404,14 @@ onMounted(async () => {
                             <option value="national_id">Employee's national ID number</option>
                         </select>
                         <p class="mt-1 text-xs text-slate-500">Encrypts emailed payslip PDFs. Employees without an ID number receive an unprotected PDF.</p>
+                    </div>
+                    <div>
+                        <label class="label">Sign-off by staff paid in the run</label>
+                        <select v-model="settings.own_pay_signoff" class="input" :disabled="!auth.can('settings.manage')">
+                            <option :value="false">Blocked (recommended)</option>
+                            <option :value="true">Allowed, and logged in the audit trail</option>
+                        </select>
+                        <p class="mt-1 text-xs text-slate-500">Turn on only when every HR reviewer and Finance approver is also on this payroll. Nobody can ever edit their own pay. Only HR administrators can change this.</p>
                     </div>
                 </div>
                 <div class="mt-5 flex justify-end">

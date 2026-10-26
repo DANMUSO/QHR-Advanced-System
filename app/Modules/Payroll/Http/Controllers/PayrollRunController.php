@@ -266,6 +266,7 @@ class PayrollRunController extends PayrollController
             'description' => ['nullable', 'string', 'max:255'],
         ]);
         abort_unless(Employee::withoutGlobalScope('company')->where('company_id', $run->company_id)->whereKey($data['employee_id'])->exists(), 422, 'Employee not in this company.');
+        PayProfileController::assertNotOwnPay($request, (int) $data['employee_id']);
         $component = PayrollComponent::withoutGlobalScopes()->where('company_id', $run->company_id)->findOrFail($data['component_id']);
         abort_if($component->category === 'employer_contribution', 422, 'Employer contributions cannot be entered as one-off items.');
 
@@ -310,6 +311,7 @@ class PayrollRunController extends PayrollController
     {
         abort_unless((int) $adjustment->payroll_run_id === $run->id, 404);
         abort_unless($run->isEditable(), 422, 'This run is locked.');
+        PayProfileController::assertNotOwnPay($request, (int) $adjustment->employee_id);
         $adjustment->delete();
         $this->service->markDirty($run);
         activity('payroll')->performedOn($run)->causedBy($request->user())->withProperties(['adjustment_id' => $adjustment->id])->log('One-off item removed');

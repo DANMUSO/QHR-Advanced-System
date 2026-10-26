@@ -158,6 +158,22 @@ class LeaveRequest extends Model
     }
 
     /** API representation. */
+    /** "Pending supervisor" only when a supervisor actually holds it; otherwise name who does (chain step or HR). */
+    public function statusLabel(): string
+    {
+        if ($this->status === self::PENDING_SUPERVISOR) {
+            $step = $this->approval_chain[$this->approval_step ?? 0] ?? null;
+            if ($step && ($step['type'] ?? null) !== 'supervisor') {
+                return 'Pending '.\App\Modules\Organization\Support\ApprovalChain::label($step);
+            }
+            if (! $this->supervisor_id && ! $this->approver_role) {
+                return 'Pending HR approval';
+            }
+        }
+
+        return self::STATUSES[$this->status] ?? $this->status;
+    }
+
     public function present(): array
     {
         $person = fn (?Employee $e) => $e ? ['id' => $e->id, 'name' => $e->full_name, 'photo_url' => $e->photo_url] : null;
@@ -184,7 +200,7 @@ class LeaveRequest extends Model
             'hours' => $this->hours,
             'days' => $this->days,
             'status' => $this->status,
-            'status_label' => self::STATUSES[$this->status] ?? $this->status,
+            'status_label' => $this->statusLabel(),
             'handover1' => $this->handover1_id ? ['employee' => $person($this->handover1), 'status' => $this->handover1_status, 'reason' => $this->handover1_reason, 'at' => $this->handover1_at] : null,
             'handover2' => $this->handover2_id ? ['employee' => $person($this->handover2), 'status' => $this->handover2_status, 'reason' => $this->handover2_reason, 'at' => $this->handover2_at] : null,
             'duties' => $this->duties,

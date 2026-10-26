@@ -125,6 +125,20 @@ class SetupController extends PayrollController
         return response()->json(['data' => PayrollSettings::all($this->company($request))]);
     }
 
+    /** PUT /payroll/settings/own-pay-signoff {allowed} — HR only (settings.manage); audited. */
+    public function updateOwnPaySignoff(Request $request): JsonResponse
+    {
+        $data = $request->validate(['allowed' => ['required', 'boolean']]);
+        $company = $this->company($request);
+        PayrollSettings::save($company, ['own_pay_signoff' => (bool) $data['allowed']] + PayrollSettings::all($company));
+        activity('payroll')->performedOn($company)->causedBy($request->user())->withProperties(['own_pay_signoff' => (bool) $data['allowed']])
+            ->log($data['allowed'] ? 'Allowed sign-off by staff paid in the run' : 'Blocked sign-off by staff paid in the run');
+
+        return response()->json(['data' => PayrollSettings::all($company->fresh()), 'message' => $data['allowed']
+            ? 'Staff paid in a run may now review and approve it. Each such sign-off is recorded in the audit trail.'
+            : 'Staff paid in a run can no longer sign it off.']);
+    }
+
     public function updateSettings(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -137,12 +151,17 @@ class SetupController extends PayrollController
             'leave_encashment_divisor' => ['required', 'numeric', 'min:1', 'max:31'],
             'variance_threshold' => ['nullable', 'numeric', 'min:0', 'max:1000'],
             'payslip_password' => ['nullable', Rule::in(['none', 'national_id'])],
+            'own_pay_signoff' => ['nullable', 'boolean'],
             'payroll_gl' => ['nullable', 'array'],
             'payroll_gl.*' => ['nullable', 'string', 'max:30'],
         ]);
         $company = $this->company($request);
         $data['variance_threshold'] = $data['variance_threshold'] ?? PayrollSettings::DEFAULTS['variance_threshold'];
         $data['payslip_password'] = $data['payslip_password'] ?? 'none';
+        // Relaxing the own-pay control is an HR/admin decision, never the payroll preparer's.
+        $data['own_pay_signoff'] = (bool) ($data['own_pay_signoff'] ?? PayrollSettings::get($company, 'own_pay_signoff'));
+        abort_if($data['own_pay_signoff'] !== (bool) PayrollSettings::get($company, 'own_pay_signoff') && ! $request->user()->can('settings.manage'), 403,
+            'Only an HR administrator can change who may sign off a run that includes their own pay.');
         PayrollSettings::save($company, $data);
         activity('payroll')->performedOn($company)->causedBy($request->user())->withProperties($data)->log('Payroll settings updated');
 

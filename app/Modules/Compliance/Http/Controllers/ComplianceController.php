@@ -135,6 +135,9 @@ class ComplianceController extends Controller
         $before = $record->only(['status', 'hearing_date', 'outcome', 'assigned_to_employee_id']);
         $record->update($data);
         $this->notifyUpdated($type, $record, $before);
+        if ($type === 'disciplinary' && $record->wasChanged('outcome')) {
+            $this->service->warningFromCase($record, $request->user());
+        }
 
         return response()->json(['message' => 'Updated.', 'data' => $this->present($type, $record->fresh(self::RELATIONS[$type]))]);
     }

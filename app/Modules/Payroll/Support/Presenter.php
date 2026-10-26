@@ -60,7 +60,7 @@ class Presenter
                 // Conflict of interest: the viewer is paid in this run, so they cannot review, approve or mark it paid.
                 'own_pay_blocked' => in_array($r->status, ['calculated', 'reviewed', 'approved'], true)
                     && ($viewer->can('payroll.approve') || $viewer->can('payroll.review') || $viewer->can('payroll.manage'))
-                    && app(PayrollRunService::class)->paysUser($r, $viewer),
+                    && app(PayrollRunService::class)->ownPayBlocked($r, $viewer),
                 'email' => $r->isLocked() && $viewer->can('payroll.manage'),
                 'delete' => $viewer->can('payroll.manage') && in_array($r->status, ['draft', 'calculated'], true),
                 'export' => $r->status !== 'draft' && ($viewer->can('payroll.reports') || $viewer->can('payroll.manage') || $viewer->can('payroll.approve')),

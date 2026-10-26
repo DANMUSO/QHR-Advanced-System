@@ -16,6 +16,7 @@ class PayrollSettings
         'advance_max_percent' => 50,
         'leave_encashment_divisor' => 22,
         'variance_threshold' => 10,             // % change vs the previous run that flags an employee line
+        'own_pay_signoff' => false,           // allow a reviewer/approver who is paid in the run to sign it off (logged); for small companies
         'payslip_password' => 'none',           // none | national_id: emailed payslip PDFs are opened with the employee's ID number
         'payroll_gl' => [
             'salaries_expense' => '6100',

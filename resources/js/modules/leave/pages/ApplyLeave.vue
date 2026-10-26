@@ -6,6 +6,7 @@ import Modal from '@/components/ui/Modal.vue';
 import Spinner from '@/components/ui/Spinner.vue';
 import { isCompleteDate } from '@/lib/format';
 import LookupSelect from '@/components/ui/LookupSelect.vue';
+import { useAuthStore } from '@/stores/auth';
 
 // request: an existing (pending) request to edit; editing sends it back through the workflow.
 const props = defineProps({ open: Boolean, request: { type: Object, default: null } });
@@ -25,6 +26,13 @@ const defaultForm = () => ({
     handover1_id: '', handover2_id: '', duties: '', comment: '', document: null,
 });
 const form = ref(defaultForm());
+
+// You cannot hand over to yourself, so you are left out of the colleague pickers.
+const myEmployeeId = useAuthStore().user?.employee?.id ?? null;
+// Errors for fields shown inline appear next to them; anything else (times, half day, duties, a general
+// rule) is listed at the top so a rejected submit is never silent.
+const INLINE_ERRORS = ['leave_type_id', 'start_date', 'end_date', 'document', 'handover1_id', 'handover2_id'];
+const unplacedErrors = computed(() => Object.entries(errors.value).filter(([k]) => !INLINE_ERRORS.includes(k)).map(([, v]) => v));
 
 const selectedType = computed(() => types.value.find(t => t.leave_type_id == form.value.leave_type_id));
 
@@ -128,6 +136,9 @@ async function submit() {
     <Modal :open="open" :title="request ? 'Edit Leave Request' : 'Apply for Leave'" size="lg" @close="emit('close')">
         <div v-if="loading" class="flex justify-center py-10"><Spinner /></div>
         <div v-else class="space-y-5">
+            <div v-if="unplacedErrors.length" class="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                <p v-for="m in unplacedErrors" :key="m">{{ m }}</p>
+            </div>
             <div>
                 <label class="label">Leave Type <span class="text-red-500">*</span></label>
                 <select v-model="form.leave_type_id" class="input" :class="errors.leave_type_id && 'border-red-500'">
@@ -173,11 +184,13 @@ async function submit() {
 
             <div>
                 <label class="label">Handover Colleague 1 (optional)</label>
-                <LookupSelect v-model="form.handover1_id" kind="employees" placeholder="Search colleague…" />
+                <LookupSelect v-model="form.handover1_id" kind="employees" placeholder="Search colleague…" :exclude="[myEmployeeId]" :error="!!errors.handover1_id" />
+                <p v-if="errors.handover1_id" class="mt-1 text-xs text-red-500">{{ errors.handover1_id }}</p>
             </div>
             <div v-if="form.handover1_id">
                 <label class="label">Handover Colleague 2 (optional)</label>
-                <LookupSelect v-model="form.handover2_id" kind="employees" placeholder="Search colleague…" />
+                <LookupSelect v-model="form.handover2_id" kind="employees" placeholder="Search colleague…" :exclude="[myEmployeeId, form.handover1_id]" :error="!!errors.handover2_id" />
+                <p v-if="errors.handover2_id" class="mt-1 text-xs text-red-500">{{ errors.handover2_id }}</p>
             </div>
             <div v-if="form.handover1_id">
                 <label class="label">Duties to Hand Over</label>

@@ -458,10 +458,12 @@ class PayrollRunService
             throw ValidationException::withMessages(['status' => $run->needs_recalculation
                 ? 'Inputs changed since the last calculation. Recalculate before review.' : 'Only a calculated run can be marked as reviewed.']);
         }
-        abort_if($this->paysUser($run, $actor), 403, self::OWN_PAY_MESSAGE);
+        abort_if($this->ownPayBlocked($run, $actor), 403, self::OWN_PAY_MESSAGE);
+        $this->assertNoErrorFlags($run, 'reviewed');
         if (! $this->canReview($run, $actor)) {
             abort(403, 'Segregation of duties: the person who calculated a run cannot review it. Ask HR (payroll.review) or another payroll officer to review.');
         }
+        $this->logOwnPaySignoff($run, $actor, 'reviewed');
         $run->update(['status' => 'reviewed', 'reviewed_by' => $actor->id, 'reviewed_at' => now()]);
         activity('payroll')->performedOn($run)->causedBy($actor)->log('Payroll reviewed');
 
@@ -478,7 +480,7 @@ class PayrollRunService
     public function canReview(PayrollRun $run, User $user): bool
     {
         return ($user->can('payroll.review') || $user->can('payroll.manage')) && (int) $run->calculated_by !== (int) $user->id
-            && ! $this->paysUser($run, $user);
+            && ! $this->ownPayBlocked($run, $user);
     }
 
     public const OWN_PAY_MESSAGE = 'Conflict of interest: this run includes your own salary, so you cannot review, approve or mark it paid. Ask another authorised user.';
@@ -494,9 +496,36 @@ class PayrollRunService
             ->exists();
     }
 
+    /**
+     * Own pay blocks sign-off unless the company has switched on `own_pay_signoff` (small companies where every
+     * reviewer/approver is also an employee on the payroll). When it is on, the sign-off is still logged.
+     */
+    public function ownPayBlocked(PayrollRun $run, User $user): bool
+    {
+        return $this->paysUser($run, $user) && ! PayrollSettings::get(Company::find($run->company_id), 'own_pay_signoff');
+    }
+
+    private function logOwnPaySignoff(PayrollRun $run, User $actor, string $step): void
+    {
+        if ($this->paysUser($run, $actor)) {
+            activity('payroll')->performedOn($run)->causedBy($actor)->withProperties(['own_pay_signoff' => true, 'step' => $step])
+                ->log("Payroll {$step} by a user paid in this run (company allows own-pay sign-off)");
+        }
+    }
+
+    /** A run with an unresolved error flag (e.g. zero basic, negative net) cannot be signed off. */
+    private function assertNoErrorFlags(PayrollRun $run, string $step): void
+    {
+        $count = PayrollRunEmployee::withoutGlobalScopes()->where('payroll_run_id', $run->id)->get(['flags'])
+            ->filter(fn ($l) => collect($l->flags ?? [])->contains(fn ($f) => ($f['severity'] ?? null) === 'error'))->count();
+        if ($count > 0) {
+            throw ValidationException::withMessages(['status' => "{$count} employee line(s) have errors (e.g. zero basic salary or negative net pay). Fix them and recalculate before the run can be {$step}."]);
+        }
+    }
+
     public function canMarkPaid(PayrollRun $run, User $user): bool
     {
-        return $user->can('payroll.approve') && ! $this->paysUser($run, $user);
+        return $user->can('payroll.approve') && ! $this->ownPayBlocked($run, $user);
     }
 
     public function reopen(PayrollRun $run, User $actor, ?string $reason = null): PayrollRun
@@ -514,7 +543,7 @@ class PayrollRunService
     {
         return $user->can('payroll.approve')
             && ! in_array($user->id, array_filter([$run->created_by, $run->calculated_by, $run->reviewed_by]), true)
-            && ! $this->paysUser($run, $user);
+            && ! $this->ownPayBlocked($run, $user);
     }
 
     public function approve(PayrollRun $run, User $actor): PayrollRun
@@ -522,7 +551,8 @@ class PayrollRunService
         if ($run->status !== 'reviewed') {
             throw ValidationException::withMessages(['status' => 'Only a reviewed run can be approved.']);
         }
-        abort_if($this->paysUser($run, $actor), 403, self::OWN_PAY_MESSAGE);
+        abort_if($this->ownPayBlocked($run, $actor), 403, self::OWN_PAY_MESSAGE);
+        $this->assertNoErrorFlags($run, 'approved');
         if (! $this->canApprove($run, $actor)) {
             abort(403, 'Segregation of duties: a run must be approved by someone other than the person who prepared, calculated or reviewed it.');
         }
@@ -536,6 +566,7 @@ class PayrollRunService
                 .($negative->count() > 5 ? ', …' : '').'). Reduce their deductions or pause loan/advance recovery, then return the run for recalculation.']);
         }
 
+        $this->logOwnPaySignoff($run, $actor, 'approved');
         DB::transaction(function () use ($run, $actor) {
             $run->update(['status' => 'approved', 'approved_by' => $actor->id, 'approved_at' => now()]);
             $this->postDeductions($run);
@@ -624,7 +655,8 @@ class PayrollRunService
         if ($run->status !== 'approved') {
             throw ValidationException::withMessages(['status' => 'Only an approved run can be marked as paid.']);
         }
-        abort_if($this->paysUser($run, $actor), 403, self::OWN_PAY_MESSAGE);
+        abort_if($this->ownPayBlocked($run, $actor), 403, self::OWN_PAY_MESSAGE);
+        $this->logOwnPaySignoff($run, $actor, 'marked paid');
         $run->update(['status' => 'paid', 'paid_by' => $actor->id, 'paid_at' => now()]);
         $this->calendarRow(Company::find($run->company_id), $run->period)?->update(['status' => 'paid']);
         activity('payroll')->performedOn($run)->causedBy($actor)->log('Payroll marked as paid');
