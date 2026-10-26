@@ -6,6 +6,8 @@ const cache = new Map();
 
 const SOURCES = {
     employees: { lookup: 'employees', label: (r) => r.name, sub: (r) => r.employee_number },
+    // Excludes the signed-in user on the server; never cached, so it is always the current user's list.
+    colleagues: { lookup: 'colleagues', label: (r) => r.name, sub: (r) => r.employee_number, nocache: true },
     supervisors: { lookup: 'supervisors', label: (r) => r.name },
     departments: { lookup: 'departments', label: (r) => r.name },
     positions: { lookup: 'positions', label: (r) => r.title },
@@ -19,8 +21,11 @@ const SOURCES = {
 };
 
 export function loadOptions(kind) {
+    const src = SOURCES[kind];
+    if (src?.nocache) {
+        return api.get('/lookups', { params: { only: src.lookup } }).then((r) => r.data[src.lookup] ?? []);
+    }
     if (!cache.has(kind)) {
-        const src = SOURCES[kind];
         const p = src.load
             ? src.load()
             : api.get('/lookups', { params: { only: src.lookup } }).then((r) => r.data[src.lookup] ?? []);

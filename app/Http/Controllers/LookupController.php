@@ -40,6 +40,12 @@ class LookupController extends Controller
                     ->get(['id', 'first_name', 'last_name', 'employee_number', 'department_id', 'position_id', 'photo_path', 'company_id'])
                     ->map(fn ($e) => ['id' => $e->id, 'name' => $e->full_name, 'employee_number' => $e->employee_number,
                         'department_id' => $e->department_id, 'position_id' => $e->position_id, 'photo_url' => $e->photo_url]),
+                // People you can hand work over to: active colleagues, never yourself (decided server-side).
+                'colleagues' => $scope(Employee::query())->active()
+                    ->whereKeyNot(Employee::withoutGlobalScopes()->where('user_id', $request->user()->id)->pluck('id')->all() ?: [0])
+                    ->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'employee_number', 'department_id', 'photo_path', 'company_id'])
+                    ->map(fn ($e) => ['id' => $e->id, 'name' => $e->full_name, 'employee_number' => $e->employee_number,
+                        'department_id' => $e->department_id, 'photo_url' => $e->photo_url]),
                 'supervisors' => $scope(Employee::query())->active()
                     ->where(fn ($q) => $q->whereHas('position', fn ($p) => $p->where('is_supervisor', true))->orWhereHas('directReports'))
                     ->orderBy('first_name')->get(['id', 'first_name', 'last_name'])

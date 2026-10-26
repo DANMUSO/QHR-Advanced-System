@@ -184,12 +184,12 @@ async function submit() {
 
             <div>
                 <label class="label">Handover Colleague 1 (optional)</label>
-                <LookupSelect v-model="form.handover1_id" kind="employees" placeholder="Search colleague…" :exclude="[myEmployeeId]" :error="!!errors.handover1_id" />
+                <LookupSelect v-model="form.handover1_id" kind="colleagues" placeholder="Search colleague…" :exclude="[myEmployeeId]" :error="!!errors.handover1_id" />
                 <p v-if="errors.handover1_id" class="mt-1 text-xs text-red-500">{{ errors.handover1_id }}</p>
             </div>
             <div v-if="form.handover1_id">
                 <label class="label">Handover Colleague 2 (optional)</label>
-                <LookupSelect v-model="form.handover2_id" kind="employees" placeholder="Search colleague…" :exclude="[myEmployeeId, form.handover1_id]" :error="!!errors.handover2_id" />
+                <LookupSelect v-model="form.handover2_id" kind="colleagues" placeholder="Search colleague…" :exclude="[myEmployeeId, form.handover1_id]" :error="!!errors.handover2_id" />
                 <p v-if="errors.handover2_id" class="mt-1 text-xs text-red-500">{{ errors.handover2_id }}</p>
             </div>
             <div v-if="form.handover1_id">

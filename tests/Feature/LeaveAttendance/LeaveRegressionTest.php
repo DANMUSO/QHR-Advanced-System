@@ -70,6 +70,16 @@ class LeaveRegressionTest extends LeaveAttendanceTestCase
         $this->assertSame($supervisor->employee->id, (int) $leave->fresh()->supervisor_id);
     }
 
+    public function test_handover_colleague_list_never_includes_yourself(): void
+    {
+        $me = $this->person(['employee'], null, 'Juma');
+        $colleague = $this->person(['employee'], null, 'Zawadi');
+
+        $ids = collect($this->actingAs($me)->getJson('/api/lookups?only=colleagues')->assertOk()->json('colleagues'))->pluck('id');
+        $this->assertNotContains($me->employee->id, $ids->all());
+        $this->assertContains($colleague->employee->id, $ids->all());
+    }
+
     public function test_a_new_company_gets_the_default_leave_catalogue(): void
     {
         $company = Company::create(['name' => 'Fresh Co', 'code' => 'FRS', 'is_active' => true]);
