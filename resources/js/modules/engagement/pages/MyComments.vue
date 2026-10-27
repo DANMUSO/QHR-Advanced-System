@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { Plus, Send } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -13,7 +14,7 @@ const categories = ref({});
 const loading = ref(true);
 const newModal = ref(false);
 const form = ref({ category: '', body: '', anonymous: false });
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const submitting = ref(false);
 const replyDrafts = ref({});
 const replying = ref(null);

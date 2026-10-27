@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { Plus, Pencil, Trash2 } from 'lucide-vue-next';
@@ -25,7 +26,7 @@ const rows = ref([]);
 const loading = ref(false);
 const modal = ref({ open: false, row: null });
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 const confirm = ref({ open: false, row: null, loading: false });
 

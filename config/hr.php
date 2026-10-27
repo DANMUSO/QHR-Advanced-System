@@ -86,24 +86,40 @@ return [
             'permissions' => [
                 'dashboard.hr', 'organization.manage', 'settings.manage',
                 'employees.view', 'employees.create', 'employees.update', 'employees.exit', 'employees.transfer', 'employees.view-salary',
-                'leave.manage', 'leave.reports', 'claims.approve', 'claims.reports', 'payroll.review',
+                'leave.apply', 'leave.manage', 'leave.reports',
+                'claims.submit', 'claims.approve', 'claims.reports',
+                'payroll.view-own', 'payroll.review',
                 'recruitment.requisition', 'recruitment.manage', 'recruitment.reports',
-                'attendance.view-team', 'attendance.manage', 'performance.admin', 'performance.manage-team',
+                'attendance.view-own', 'attendance.view-team', 'attendance.manage',
+                'performance.participate', 'performance.admin', 'performance.manage-team',
                 'documents.manage', 'announcements.manage', 'engagement.manage', 'probation.manage',
                 'users.manage', 'users.impersonate', 'audit.view',
             ],
         ],
         'payroll-officer' => [
             'label' => 'Payroll Officer',
-            'permissions' => ['dashboard.finance', 'employees.view', 'employees.view-salary', 'payroll.manage', 'payroll.reports'],
+            'permissions' => [
+                'dashboard.finance', 'employees.view', 'employees.view-salary',
+                'leave.apply', 'claims.submit', 'attendance.view-own', 'performance.participate', 'payroll.view-own',
+                'payroll.manage', 'payroll.reports',
+            ],
         ],
         'finance' => [
             'label' => 'Finance',
-            'permissions' => ['dashboard.finance', 'claims.pay', 'claims.reports', 'payroll.approve', 'payroll.reports'],
+            'permissions' => [
+                'dashboard.finance',
+                'leave.apply', 'claims.submit', 'attendance.view-own', 'performance.participate', 'payroll.view-own',
+                'claims.pay', 'claims.reports', 'payroll.approve', 'payroll.reports',
+            ],
         ],
         'supervisor' => [
             'label' => 'Supervisor',
-            'permissions' => ['leave.approve', 'leave.reports', 'attendance.view-team', 'performance.manage-team', 'recruitment.requisition'],
+            'permissions' => [
+                'leave.apply', 'leave.approve', 'leave.reports',
+                'claims.submit', 'attendance.view-own', 'attendance.view-team',
+                'performance.participate', 'performance.manage-team',
+                'payroll.view-own', 'recruitment.requisition',
+            ],
         ],
         'employee' => [
             'label' => 'Employee',

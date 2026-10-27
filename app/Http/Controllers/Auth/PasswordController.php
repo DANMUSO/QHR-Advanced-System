@@ -100,6 +100,16 @@ class PasswordController extends Controller
             ]);
         }
 
-        return response()->json(['message' => $successMessage]);
+        // Whoever was signed in on this browser (e.g. an admin opening someone's activation link) is signed out, so the
+        // next step is a clean sign-in as the account that was just activated or reset.
+        if (\Illuminate\Support\Facades\Auth::guard('web')->check()) {
+            \Illuminate\Support\Facades\Auth::guard('web')->logout();
+        }
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
+        return response()->json(['message' => $successMessage, 'email' => $request->input('email')]);
     }
 }

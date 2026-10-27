@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { Plus, Send } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -14,7 +15,7 @@ const categories = ref({});
 const loading = ref(false);
 const open = ref(false);
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 const replies = ref({});
 

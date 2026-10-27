@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, computed, onMounted } from 'vue';
 import { Plus, ChevronLeft, Trash2, Send, Pencil } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -24,7 +25,7 @@ const team = ref([]);
 
 const modal = ref({ open: false, mode: null, ctx: null });
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 
 const planCols = [

@@ -143,7 +143,7 @@ class SetupController extends PayrollController
     {
         $data = $request->validate([
             'pay_day' => ['required', 'integer', 'min:1', 'max:31'],
-            'cutoff_day' => ['required', 'integer', 'min:1', 'max:31'],
+            'cutoff_day' => ['required', 'integer', 'min:1', 'max:31', 'lte:pay_day'],
             'overtime_multiplier_normal' => ['required', 'numeric', 'min:1', 'max:5'],
             'overtime_multiplier_holiday' => ['required', 'numeric', 'min:1', 'max:5'],
             'overtime_monthly_hours' => ['nullable', 'numeric', 'min:1', 'max:400'],
@@ -164,8 +164,13 @@ class SetupController extends PayrollController
         $data['own_pay_signoff'] = (bool) ($data['own_pay_signoff'] ?? PayrollSettings::get($company, 'own_pay_signoff'));
         abort_if($data['own_pay_signoff'] !== (bool) PayrollSettings::get($company, 'own_pay_signoff') && ! $request->user()->can('settings.manage'), 403,
             'Only an HR administrator can change who may sign off a run that includes their own pay.');
+        $daysChanged = (int) $data['pay_day'] !== (int) PayrollSettings::get($company, 'pay_day')
+            || (int) $data['cutoff_day'] !== (int) PayrollSettings::get($company, 'cutoff_day');
         PayrollSettings::save($company, $data);
         activity('payroll')->performedOn($company)->causedBy($request->user())->withProperties($data)->log('Payroll settings updated');
+        if ($daysChanged) {
+            self::regenerateCalendar($company->fresh());
+        }
 
         return response()->json(['data' => PayrollSettings::all($company->fresh()), 'message' => 'Payroll settings saved.']);
     }
@@ -204,19 +209,12 @@ class SetupController extends PayrollController
 
     public static function ensureCalendar($company, int $year): int
     {
-        $payDay = (int) PayrollSettings::get($company, 'pay_day');
-        $cutoff = (int) PayrollSettings::get($company, 'cutoff_day');
         $created = 0;
         for ($m = 1; $m <= 12; $m++) {
             $period = CarbonImmutable::create($year, $m, 1);
-            $pay = $period->day(min($payDay, $period->daysInMonth));
-            // Pay before a weekend
-            while ($pay->isWeekend()) {
-                $pay = $pay->subDay();
-            }
             $row = PayrollCalendar::withoutGlobalScopes()->firstOrCreate(
                 ['company_id' => $company->id, 'period' => $period->toDateString()],
-                ['cutoff_date' => $period->day(min($cutoff, $period->daysInMonth))->toDateString(), 'pay_date' => $pay->toDateString(), 'status' => 'scheduled'],
+                self::datesFor($company, $period) + ['status' => 'scheduled'],
             );
             $created += $row->wasRecentlyCreated ? 1 : 0;
         }
@@ -224,12 +222,52 @@ class SetupController extends PayrollController
         return $created;
     }
 
+    /** Cut-off and pay date for a month from the company's pay settings (pay moves back off a weekend). */
+    public static function datesFor($company, CarbonImmutable $period): array
+    {
+        $pay = $period->day(min((int) PayrollSettings::get($company, 'pay_day'), $period->daysInMonth));
+        while ($pay->isWeekend()) {
+            $pay = $pay->subDay();
+        }
+        $cutoff = $period->day(min((int) PayrollSettings::get($company, 'cutoff_day'), $period->daysInMonth));
+
+        return ['cutoff_date' => min($cutoff, $pay)->toDateString(), 'pay_date' => $pay->toDateString()];
+    }
+
+    /**
+     * After the pay or cut-off day changes, months not yet processed (still "scheduled", this month onwards) follow
+     * the new days; open regular runs for those months take the new pay date. Returns the months updated.
+     */
+    public static function regenerateCalendar($company): int
+    {
+        $updated = 0;
+        PayrollCalendar::withoutGlobalScopes()->where('company_id', $company->id)->where('status', 'scheduled')
+            ->whereDate('period', '>=', now()->startOfMonth()->toDateString())->get()
+            ->each(function (PayrollCalendar $row) use ($company, &$updated) {
+                $dates = self::datesFor($company, CarbonImmutable::parse($row->period));
+                $row->update($dates);
+                PayrollRun::where('company_id', $company->id)->where('type', 'regular')->whereDate('period', $row->period->toDateString())
+                    ->whereIn('status', ['draft', 'calculated', 'reviewed'])->update(['pay_date' => $dates['pay_date']]);
+                $updated++;
+            });
+
+        return $updated;
+    }
+
     public function updateCalendar(Request $request, PayrollCalendar $calendar): JsonResponse
     {
+        // Both dates belong to the period's own month, and inputs close (cut-off) on or before pay day.
+        $monthStart = $calendar->period->copy()->startOfMonth()->toDateString();
+        $monthEnd = $calendar->period->copy()->endOfMonth()->toDateString();
         $data = $request->validate([
-            'cutoff_date' => ['required', 'date'],
-            'pay_date' => ['required', 'date', 'after_or_equal:cutoff_date'],
+            'cutoff_date' => ['required', 'date', 'after_or_equal:'.$monthStart, 'before_or_equal:pay_date'],
+            'pay_date' => ['required', 'date', 'after_or_equal:cutoff_date', 'before_or_equal:'.$monthEnd],
             'notes' => ['nullable', 'string', 'max:500'],
+        ], [
+            'cutoff_date.after_or_equal' => 'The cut-off must be in '.$calendar->period->format('F Y').'.',
+            'cutoff_date.before_or_equal' => 'The cut-off must be on or before the pay date.',
+            'pay_date.after_or_equal' => 'The pay date must be on or after the cut-off.',
+            'pay_date.before_or_equal' => 'The pay date must be in '.$calendar->period->format('F Y').'.',
         ]);
         $calendar->update($data);
         PayrollRun::where('company_id', $calendar->company_id)->where('type', 'regular')->whereDate('period', $calendar->period->toDateString())

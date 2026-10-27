@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { Plus, MessageSquare } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -14,7 +15,7 @@ const paginator = ref(null);
 const loading = ref(false);
 const modal = ref(false);
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 
 const statusColors = { open: 'blue', in_progress: 'yellow', resolved: 'green', closed: 'slate' };

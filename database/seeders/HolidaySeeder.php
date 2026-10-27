@@ -27,6 +27,8 @@ class HolidaySeeder extends Seeder
         $movable = [
             ['Good Friday', '2026-04-03'], ['Easter Monday', '2026-04-06'],
             ['Good Friday', '2027-03-26'], ['Easter Monday', '2027-03-29'],
+            // Moon-dependent: expected dates; HR adjusts them when the date is gazetted.
+            ['Idd-ul-Fitr', '2026-03-20'], ['Idd-ul-Fitr', '2027-03-10'],
         ];
         foreach ($movable as [$name, $date]) {
             Holiday::updateOrCreate(['company_id' => null, 'name' => $name, 'date' => $date], ['recurring' => false]);

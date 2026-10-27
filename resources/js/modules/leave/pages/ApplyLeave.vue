@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, watch, computed } from 'vue';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
 import swal from '@/lib/swal';
@@ -17,7 +18,7 @@ const loading = ref(false);
 const submitting = ref(false);
 const preview = ref(null);
 const previewError = ref('');
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 let previewSeq = 0; // ignore responses to superseded previews
 
 const defaultForm = () => ({

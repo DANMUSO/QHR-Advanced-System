@@ -1,5 +1,6 @@
 <script setup>
 /** Recall staff from approved leave (in progress or upcoming) and the recall history. */
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { Plus, Undo2 } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -17,7 +18,7 @@ const loading = ref(true);
 const modal = ref(false);
 const form = ref({});
 const target = ref(null);
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 
 async function load() {

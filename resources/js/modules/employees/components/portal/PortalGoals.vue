@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { Check, MessageSquare, Send, RotateCcw, Paperclip, Download, ChevronDown, ChevronUp } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -23,7 +24,7 @@ const comment = ref('');
 
 const modal = ref({ open: false, mode: 'submit', goal: null });
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const busy = ref(false);
 
 async function load() {

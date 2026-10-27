@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, reactive, computed } from 'vue';
 import api, { fieldErrors } from '@/lib/api';
 import PasswordInput from '@/components/ui/PasswordInput.vue';
@@ -7,7 +8,7 @@ import Spinner from '@/components/ui/Spinner.vue';
 
 const emit = defineEmits(['changed']);
 const form = reactive({ current_password: '', password: '', password_confirmation: '' });
-const errors = ref({});
+const errors = useFormErrors(() => form);
 const loading = ref(false);
 const mismatch = computed(() => form.password_confirmation && form.password !== form.password_confirmation);
 

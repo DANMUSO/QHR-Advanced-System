@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, reactive, watch } from 'vue';
 import { RotateCcw } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -17,7 +18,7 @@ const emit = defineEmits(['close', 'done']);
 const today = () => new Date().toLocaleDateString('en-CA');
 const meta = ref({ branches: [], departments: [], positions: [], levels: [], supervisors: [], contract_types: [] });
 const form = reactive({});
-const errors = ref({});
+const errors = useFormErrors(() => form);
 const saving = ref(false);
 const loading = ref(false);
 

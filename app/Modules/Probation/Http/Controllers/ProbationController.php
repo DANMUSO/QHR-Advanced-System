@@ -102,12 +102,19 @@ class ProbationController extends Controller
         abort_unless($employee && in_array($employee->status, ['active', 'suspended'], true), 422, 'This employee is no longer active.');
         // An extension must move the end date later than it is now (and past today); an earlier date is not an extension.
         $currentEnd = collect([$employee->probation_end_date, $probationReview->probation_end_date, today()])->filter()->max();
+        // Employment Act s.42: 6 months plus one extension of up to 6 — never beyond 12 months from joining.
+        $maxEnd = \Illuminate\Support\Carbon::parse($employee->date_of_joining ?? today())->addMonthsNoOverflow(12)->subDay();
         $data = $request->validate([
             'decision' => ['required', Rule::in(['confirm', 'extend', 'terminate'])],
             'comment' => ['required', 'string', 'max:3000'],
-            'extension_end_date' => ['required_if:decision,extend', 'nullable', 'date', 'after:'.$currentEnd->toDateString()],
+            'extension_end_date' => ['required_if:decision,extend', 'nullable', 'date', 'after:'.$currentEnd->toDateString(), 'before_or_equal:'.$maxEnd->toDateString()],
             'exit_date' => ['nullable', 'date'],
-        ], ['extension_end_date.after' => 'The new end date must be after the current probation end date ('.$currentEnd->format('j M Y').'). Shortening a probation is not an extension.']);
+        ], [
+            'extension_end_date.after' => 'The new end date must be after the current probation end date ('.$currentEnd->format('j M Y').'). Shortening a probation is not an extension.',
+            'extension_end_date.before_or_equal' => 'Probation cannot run past '.$maxEnd->format('j M Y').': 12 months from joining is the legal maximum (Employment Act s.42).',
+        ]);
+        abort_if($data['decision'] === 'extend' && $employee->probation_status === 'extended', 422,
+            'This probation has already been extended once. The Employment Act allows a single extension; confirm or end it.');
         $decision = $data['decision'];
         $status = ['confirm' => 'confirmed', 'extend' => 'extended', 'terminate' => 'terminated'][$decision];
         $decidedOn = today()->toDateString();
@@ -205,6 +212,8 @@ class ProbationController extends Controller
             })->values(),
             // Earliest date HR may extend to: the day after the later of the current end date and today.
             'min_extension_date' => collect([$r->employee?->probation_end_date, $r->probation_end_date, today()])->filter()->max()->copy()->addDay()->toDateString(),
+            'max_extension_date' => \Illuminate\Support\Carbon::parse($r->employee?->date_of_joining ?? today())->addMonthsNoOverflow(12)->subDay()->toDateString(),
+            'can_extend' => $r->employee?->probation_status !== 'extended',
             'can_review' => $user ? $routing->canDecide($r, $user) : false,
             'can_decide' => $r->status === 'hr_review' && $user?->can('probation.manage') && $user->employee?->id !== $r->employee_id,
             'primary_approver_id' => $r->primary_approver_id,

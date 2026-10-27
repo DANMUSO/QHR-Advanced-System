@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { CreditCard } from 'lucide-vue-next';
 import { openServerFile } from '@/lib/export';
@@ -29,7 +30,7 @@ const loading = ref(false);
 
 const modal = ref({ open: false, row: null });
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 
 const columns = [

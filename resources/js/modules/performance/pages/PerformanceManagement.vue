@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Plus, Play, Lock, Download, Award, CheckCircle2 } from 'lucide-vue-next';
@@ -47,7 +48,7 @@ const bands = ref([]);
 
 const modal = ref({ open: false, mode: null, row: null });
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 
 const cycleColors = { draft: 'slate', active: 'green', closed: 'blue' };

@@ -3,6 +3,7 @@
  * Biometric terminals (attendance.manage): register, edit, activate / deactivate, rotate the push token, revoke.
  * Tokens are only returned at registration / rotation and are shown once.
  */
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { Plus, Pencil, RefreshCw, Ban, Copy } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -18,7 +19,7 @@ const rows = ref([]);
 const loading = ref(true);
 const modal = ref({ open: false, row: null });
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 const issued = ref(null); // { name, token } shown once
 

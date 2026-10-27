@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Plus, Download, Pencil, Trash2, FileText } from 'lucide-vue-next';
@@ -29,7 +30,7 @@ const paginator = ref(null);
 const loading = ref(false);
 const modal = ref(false);
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 
 // column definitions per tab

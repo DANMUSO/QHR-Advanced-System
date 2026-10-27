@@ -20,8 +20,8 @@ class LeaveType extends Model
     /** Default catalogue seeded for every company (HR-FEATURES §3.1 / §3.6). */
     public const DEFAULTS = [
         ['code' => 'ANNUAL', 'name' => 'Annual Leave', 'days_per_year' => 21, 'opening_days' => 1.75, 'monthly_accrual' => 1.75, 'counting' => 'working', 'accrues_monthly' => true, 'carry_forward' => true, 'allow_half_day' => true, 'color' => '#6366f1', 'sort_order' => 10],
-        ['code' => 'SICK_FULL', 'name' => 'Sick Leave (Full Pay)', 'days_per_year' => 15, 'opening_days' => 7, 'counting' => 'working', 'requires_document' => true, 'allow_half_day' => true, 'color' => '#f43f5e', 'sort_order' => 20],
-        ['code' => 'SICK_HALF', 'name' => 'Sick Leave (Half Pay)', 'days_per_year' => 15, 'counting' => 'working', 'paid' => 'half', 'allow_half_day' => true, 'color' => '#fb7185', 'sort_order' => 25],
+        ['code' => 'SICK_FULL', 'name' => 'Sick Leave (Full Pay)', 'days_per_year' => 7, 'opening_days' => 7, 'counting' => 'working', 'requires_document' => true, 'allow_half_day' => true, 'color' => '#f43f5e', 'sort_order' => 20],
+        ['code' => 'SICK_HALF', 'name' => 'Sick Leave (Half Pay)', 'days_per_year' => 7, 'counting' => 'working', 'paid' => 'half', 'allow_half_day' => true, 'color' => '#fb7185', 'sort_order' => 25],
         ['code' => 'STUDY', 'name' => 'Study Leave', 'days_per_year' => 7, 'counting' => 'working', 'requires_document' => true, 'allow_half_day' => true, 'color' => '#0ea5e9', 'sort_order' => 30],
         ['code' => 'COMPASSIONATE', 'name' => 'Compassionate Leave', 'days_per_year' => 5, 'counting' => 'working', 'color' => '#8b5cf6', 'sort_order' => 40],
         ['code' => 'MATERNITY', 'name' => 'Maternity Leave', 'days_per_year' => 90, 'counting' => 'calendar', 'requires_document' => true, 'gender' => 'female', 'color' => '#ec4899', 'sort_order' => 50],

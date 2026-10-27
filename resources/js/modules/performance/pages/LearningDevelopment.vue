@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { Plus, BookOpen, Users } from 'lucide-vue-next';
 import { label } from '@/lib/format';
@@ -24,7 +25,7 @@ const rows = ref([]);
 const loading = ref(false);
 const modal = ref(false);
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 
 // skills matrix specific

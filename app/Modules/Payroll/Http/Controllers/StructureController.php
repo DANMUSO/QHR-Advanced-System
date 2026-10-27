@@ -47,6 +47,16 @@ class StructureController extends PayrollController
             'components.*.rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'description' => ['nullable', 'string', 'max:500'],
             'active' => ['boolean'],
+        ], [
+            'components.*.component_id.distinct' => 'Each pay component can only be added once to a structure.',
+            'components.*.component_id.required' => 'Choose a pay component for every row.',
+            'components.*.component_id.exists' => 'That pay component does not belong to this company.',
+            'components.*.rate.max' => 'A rate cannot be more than 100%.',
+            'components.*.amount.min' => 'Amounts cannot be negative.',
+        ], [
+            'components.*.component_id' => 'pay component',
+            'components.*.amount' => 'amount',
+            'components.*.rate' => 'rate',
         ]);
         // Omitting `components` keeps the structure's current components (older clients only send name/grade/basic).
         if ($request->has('components')) {

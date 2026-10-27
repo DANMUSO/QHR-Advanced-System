@@ -58,8 +58,12 @@ export const useUiStore = defineStore('ui', {
          * Super admin company scope. A company id is sent as X-Company-Id; "All companies" is remembered
          * separately (companyScopeAll) so a reload does not fall back to the first company.
          */
-        setCompanyScope(id) {
+        setCompanyScope(id, { remember = true } = {}) {
             this.companyScope = id ? String(id) : '';
+            // Remembered on the account too: localStorage is cleared at sign-out, the next sign-in restores it from here.
+            if (remember) {
+                import('@/lib/api').then(({ default: api }) => api.put('/me/preferences', { company_scope: id ? String(id) : 'all' })).catch(() => {});
+            }
             try {
                 if (id) {
                     localStorage.setItem('companyScope', String(id));

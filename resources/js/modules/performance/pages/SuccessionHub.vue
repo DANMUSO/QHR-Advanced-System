@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted, watch } from 'vue';
 import { Plus, ArrowRight, Pencil, Trash2, X } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -28,7 +29,7 @@ const matrix9box = ref({ employees: [], notRated: [], cycles: [] });
 const loading = ref(false);
 const modal = ref(false);
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 const selectedCycle = ref('');
 const cycles = ref([]);

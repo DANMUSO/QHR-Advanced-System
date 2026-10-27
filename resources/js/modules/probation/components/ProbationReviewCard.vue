@@ -112,14 +112,14 @@ async function submitDecision() {
                     <label class="label">Decision</label>
                     <select v-model="decision.decision" class="input">
                         <option value="confirm">Confirm (generates the confirmation letter)</option>
-                        <option value="extend">Extend probation</option>
+                        <option v-if="review.can_extend !== false" value="extend">Extend probation</option>
                         <option value="terminate">Terminate (exits the employee)</option>
                     </select>
                 </div>
                 <div v-if="decision.decision === 'extend'">
                     <label class="label">New probation end date</label>
-                    <input v-model="decision.extension_end_date" type="date" class="input" :min="review.min_extension_date" />
-                    <p v-if="review.min_extension_date && !errors.extension_end_date" class="mt-1 text-xs text-slate-500">Must be later than the current end date. Earliest: {{ formatDate(review.min_extension_date) }}.</p>
+                    <input v-model="decision.extension_end_date" type="date" class="input" :min="review.min_extension_date" :max="review.max_extension_date" />
+                    <p v-if="review.min_extension_date && !errors.extension_end_date" class="mt-1 text-xs text-slate-500">Must be later than the current end date. Earliest: {{ formatDate(review.min_extension_date) }}<template v-if="review.max_extension_date">; latest: {{ formatDate(review.max_extension_date) }} (12 months from joining, the legal maximum)</template>. One extension only.</p>
                     <p v-if="errors.extension_end_date" class="field-error">{{ errors.extension_end_date }}</p>
                 </div>
             </div>

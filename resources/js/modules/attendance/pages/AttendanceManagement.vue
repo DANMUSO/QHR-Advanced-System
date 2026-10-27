@@ -4,6 +4,7 @@
  * team's overtime and timesheets; HR (attendance.manage) sees the company and also manages shifts and geo-fences.
  * ?tab= deep-links a tab (the approvals inbox uses ?tab=overtime / ?tab=timesheets).
  */
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Plus, Pencil, Trash2, Check, X } from 'lucide-vue-next';
@@ -45,7 +46,7 @@ const page = ref(1);
 const loading = ref(false);
 const modal = ref({ open: false, row: null });
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 
 // report

@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { Plus, Trash2, ArrowUpRight, ClipboardCheck, Lock, Pencil } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -26,7 +27,7 @@ const kpis = ref([]); // team goals, to raise a point from a KPI
 
 const modal = ref({ open: false, mode: null, row: null });
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 const detail = ref(null); // PIP detail with check-ins
 

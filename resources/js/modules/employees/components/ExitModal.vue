@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, reactive, computed, watch } from 'vue';
 import { LogOut, Users } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -23,7 +24,7 @@ const overrides = ref({});
 const reports = ref([]);
 const supervisors = ref([]);
 const reasons = ref([]);
-const errors = ref({});
+const errors = useFormErrors(() => form);
 const saving = ref(false);
 const loadingCtx = ref(false);
 

@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Award, CheckCircle2, GraduationCap, MessageSquare } from 'lucide-vue-next';
@@ -38,7 +39,7 @@ const training = ref([]);
 
 const modal = ref({ open: false, mode: null, row: null });
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 
 async function load() {

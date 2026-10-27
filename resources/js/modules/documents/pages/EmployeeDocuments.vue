@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Upload, Download, FileText, Search, FolderOpen } from 'lucide-vue-next';
@@ -18,7 +19,7 @@ const data = ref(null);
 const loading = ref(true);
 const uploadModal = ref(false);
 const form = ref({ title: '', document_type_id: '', notes: '', file: null, is_confidential: false });
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const uploading = ref(false);
 
 // Without an employee in the URL, show a picker instead of a blank page.

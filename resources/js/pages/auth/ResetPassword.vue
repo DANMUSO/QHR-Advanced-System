@@ -1,9 +1,11 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, reactive, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { CheckCircle2, AlertCircle } from 'lucide-vue-next';
 import api, { fieldErrors } from '@/lib/api';
 import { useUiStore } from '@/stores/ui';
+import { useAuthStore } from '@/stores/auth';
 import PasswordInput from '@/components/ui/PasswordInput.vue';
 import PasswordStrength from '@/components/ui/PasswordStrength.vue';
 import Spinner from '@/components/ui/Spinner.vue';
@@ -22,7 +24,7 @@ const form = reactive({
     password: '',
     password_confirmation: '',
 });
-const errors = ref({});
+const errors = useFormErrors(() => form);
 const loading = ref(false);
 const done = ref(false);
 const invalidLink = !form.token || !form.email;
@@ -35,8 +37,13 @@ async function submit() {
         const { data } = await api.post(activating.value ? '/auth/activate' : '/auth/reset-password', form);
         done.value = true;
         ui.toast(data.message);
+        // The server signed out any previous session on this browser; forget it here too, so the next screen is
+        // the sign-in for the account just activated, not the old user's dashboard.
+        const auth = useAuthStore();
+        auth.user = null;
+        try { localStorage.removeItem('companyScope'); localStorage.removeItem('companyScopeAll'); } catch { /* storage unavailable */ }
         localStorage.setItem('lastEmail', form.email);
-        setTimeout(() => router.push('/login'), 2500);
+        setTimeout(() => router.push({ path: '/login', query: { email: form.email } }), 2500);
     } catch (e) {
         errors.value = fieldErrors(e);
     } finally {

@@ -4,6 +4,7 @@
  *  mode "approve"  → supervisor Amend & Approve (POST /leave/requests/{id}/amend-approve)
  *  mode "handover" → handover colleague accepts for amended dates (POST /leave/requests/{id}/handover-decide)
  */
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, watch, computed } from 'vue';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
 import { useUiStore } from '@/stores/ui';
@@ -19,7 +20,7 @@ const form = ref({});
 const preview = ref(null);
 const previewError = ref('');
 const previewing = ref(false);
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 const hourly = computed(() => !!props.request?.start_time);
 

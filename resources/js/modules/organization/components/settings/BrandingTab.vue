@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { Upload, Trash2 } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -12,7 +13,7 @@ const { cfg } = useCompanyContext();
 
 const form = ref(null);
 const options = ref({ timezones: [], date_formats: [] });
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const loading = ref(true);
 const saving = ref(false);
 const uploading = ref(false);

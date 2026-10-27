@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, computed, watch } from 'vue';
 import { Plus, Trash2 } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -12,7 +13,7 @@ const emit = defineEmits(['close', 'done']);
 const meta = ref(null);
 const loading = ref(false);
 const submitting = ref(false);
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 
 const defaultForm = () => ({
     claimant_type: 'self', dependant_id: '', other_name: '', other_relationship: '',

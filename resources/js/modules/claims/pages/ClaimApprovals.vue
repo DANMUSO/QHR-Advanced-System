@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, computed, onMounted } from 'vue';
 import { Check, X, Paperclip } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -29,7 +30,7 @@ const claims = ref([]);
 const loading = ref(true);
 const modal = ref({ open: false, claim: null, type: '', detail: null });
 const form = ref({ approved_amount: '', note: '', reason: '' });
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const processing = ref(false);
 
 const statusColor = { submitted: 'amber', hr_approved: 'blue', paid: 'green', hr_rejected: 'red', finance_rejected: 'orange', cancelled: 'slate' };

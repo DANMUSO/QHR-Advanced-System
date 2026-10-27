@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { Plus, Pencil, Trash2 } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -25,7 +26,7 @@ const loading = ref(false);
 const modal = ref(false);
 const editing = ref(null);
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 // Hazards and incidents are recorded after the fact: no future dates (the server rejects them too).
 const maxNow = () => {
     const d = new Date();

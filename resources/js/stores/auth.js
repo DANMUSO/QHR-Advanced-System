@@ -52,10 +52,14 @@ export const useAuthStore = defineStore('auth', {
         },
 
         _autoSelectCompany() {
-            // "All companies" chosen explicitly is kept; only a first sign-in defaults to the first company.
-            if (this.isSuperAdmin && !localStorage.getItem('companyScope') && !localStorage.getItem('companyScopeAll') && this.user?.companies?.length) {
-                useUiStore().setCompanyScope(String(this.user.companies[0].id));
-            }
+            // After sign-in, return a super admin to the company they last worked in (saved on the account), so they
+            // never land in an arbitrary first company and edit the wrong one. First ever sign-in: the first company.
+            if (!this.isSuperAdmin || localStorage.getItem('companyScope') || localStorage.getItem('companyScopeAll') || !this.user?.companies?.length) return;
+            const saved = this.user.preferences?.company_scope;
+            const ui = useUiStore();
+            if (saved === 'all') ui.setCompanyScope('', { remember: false });
+            else if (saved && this.user.companies.some((c) => String(c.id) === String(saved))) ui.setCompanyScope(String(saved), { remember: false });
+            else ui.setCompanyScope(String(this.user.companies[0].id));
         },
 
         async login(credentials) {

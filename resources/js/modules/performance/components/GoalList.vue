@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, computed } from 'vue';
 import { Check, X, Send, MessageSquareWarning, GitBranch, Repeat, CalendarClock, PencilLine, Trash2, Paperclip } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -29,7 +30,7 @@ const statusLabels = { cascaded: 'Awaiting acceptance', in_progress: 'In progres
 
 const modal = ref({ open: false, mode: null, goal: null });
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 const team = ref([]);
 

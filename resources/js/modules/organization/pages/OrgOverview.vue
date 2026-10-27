@@ -82,7 +82,7 @@ const CONFIG = {
         ],
         fields: [
             { key: 'name', label: 'Level name', required: true, wide: true },
-            { key: 'probation_months', label: 'Probation length (months)', type: 'number', min: 0, max: 24, default: 6 },
+            { key: 'probation_months', label: 'Probation length (months, max 6)', type: 'number', min: 0, max: 6, default: 3 },
             { key: 'probation_review_days', label: 'Probation review every (days)', type: 'number', min: 0, max: 365, default: 30 },
         ],
     },

@@ -87,7 +87,8 @@ class EmployeeRules
             'date_of_joining' => ['required', 'date', 'before_or_equal:'.now()->addYear()->toDateString()],
             'contract_type' => ['required', Rule::in(['permanent', 'contract', 'casual', 'intern'])],
             'contract_end_date' => ['nullable', 'required_unless:contract_type,permanent', 'date', 'after:date_of_joining'],
-            'probation_months' => ['nullable', 'integer', 'min:0', 'max:12'],
+            // Employment Act s.42: probation may not exceed 6 months (one extension of up to 6 more is decided later).
+            'probation_months' => ['nullable', 'integer', 'min:0', 'max:6'],
             'has_medical_cover' => ['boolean'],
         ];
     }

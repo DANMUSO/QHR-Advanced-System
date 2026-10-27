@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Briefcase, MapPin, CalendarClock, ArrowLeft, Search, Upload, CheckCircle2 } from 'lucide-vue-next';
@@ -19,7 +20,7 @@ const search = ref('');
 
 const form = ref({ name: '', email: '', phone: '', cover_letter: '', website: '' });
 const cv = ref(null);
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const submitting = ref(false);
 const submitted = ref('');
 const formError = ref('');

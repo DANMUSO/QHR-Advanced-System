@@ -48,7 +48,9 @@ class StructureController extends Controller
     /** Counts for the organisation page tabs and company profile. */
     public function summary(Request $request): JsonResponse
     {
-        $holidays = $this->query($request, 'holidays');
+        // Same year filter as the Holidays tab list (fixed holidays recur every year), so badge and list agree.
+        $year = $request->integer('year') ?: now()->year;
+        $holidays = $this->query($request, 'holidays')->where(fn ($w) => $w->whereYear('date', $year)->orWhere('recurring', true));
 
         return response()->json([
             'branches' => Branch::count(),
@@ -75,7 +77,8 @@ class StructureController extends Controller
             'benefits' => $query->orderBy('name'),
             'contacts' => $query->orderBy('name'),
             'holidays' => $query->when($request->integer('year'), fn ($q, $y) => $q->where(fn ($w) => $w->whereYear('date', $y)->orWhere('recurring', true)))
-                ->orderByRaw('MONTH(date), DAY(date)'),
+                // Calendar order (month, day) on MySQL and sqlite alike.
+                ->orderByRaw(\Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite' ? "strftime('%m-%d', date)" : "DATE_FORMAT(date, '%m-%d')"),
         };
 
         if ($search !== '') {
@@ -216,7 +219,7 @@ class StructureController extends Controller
             ],
             'levels' => [
                 'name' => ['required', 'string', 'max:120', $unique('employment_levels')],
-                'probation_months' => ['required', 'integer', 'min:0', 'max:24'],
+                'probation_months' => ['required', 'integer', 'min:0', 'max:6'], // Employment Act s.42
                 'probation_review_days' => ['required', 'integer', 'min:0', 'max:365'],
             ],
             'benefits' => [

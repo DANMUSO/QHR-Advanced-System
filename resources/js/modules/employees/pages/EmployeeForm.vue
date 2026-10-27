@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -24,7 +25,7 @@ const companies    = computed(() => auth.user?.companies ?? []);
 const meta = ref(null);
 const loading = ref(false);
 const saving = ref(false);
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const activeTab = ref('personal');
 
 // Which tab each field lives on, so errors can be counted per tab and the form can jump to the first one.
@@ -420,7 +421,7 @@ function removeNok(i) { if (form.value.next_of_kin.length > 1) form.value.next_o
                         </div>
                         <div>
                             <label class="label">Probation Months</label>
-                            <input v-model="form.probation_months" type="number" min="0" max="12" class="input" :class="errors.probation_months && 'border-red-500'" @input="probationTouched = true" />
+                            <input v-model="form.probation_months" type="number" min="0" max="6" class="input" :class="errors.probation_months && 'border-red-500'" @input="probationTouched = true" />
                             <p v-if="!probationTouched && form.employment_level_id" class="mt-1 text-xs text-slate-400">Default for the selected level.</p>
                             <p v-if="errors.probation_months" class="mt-1 text-xs text-red-500">{{ errors.probation_months }}</p>
                         </div>

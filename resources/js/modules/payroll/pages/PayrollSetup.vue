@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, computed, onMounted } from 'vue';
 import { Plus, Pencil, Trash2, Users } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -99,7 +100,7 @@ const rows = ref([]);
 const loading = ref(false);
 const modal = ref({ open: false, row: null });
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const levels = ref([]);
 const saving = ref(false);
 const deleteTarget = ref(null);

@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, reactive, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Mail, AlertCircle, ArrowLeft, KeyRound, Smartphone, LockKeyhole } from 'lucide-vue-next';
@@ -14,7 +15,7 @@ const router = useRouter();
 
 const step = ref('credentials');
 const form = reactive({ email: localStorage.getItem('lastEmail') || '', password: '', remember: true });
-const errors = ref({});
+const errors = useFormErrors(() => form);
 function takeNotice() {
     try {
         const text = sessionStorage.getItem('authNotice');

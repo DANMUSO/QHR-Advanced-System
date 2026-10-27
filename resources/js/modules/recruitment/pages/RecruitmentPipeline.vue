@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Plus, Search, UserCheck, ExternalLink, CheckCircle, Circle, Download, Pencil, Check, X, Send, UserPlus, FileText, Undo2, Eye, ArrowRight, Ban, Gift } from 'lucide-vue-next';
@@ -40,7 +41,7 @@ const paginator = ref(null);
 const loading = ref(false);
 const modal = ref({ open: false, row: null });
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 const search = ref('');
 const stageFilter = ref('');

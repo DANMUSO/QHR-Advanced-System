@@ -1,4 +1,5 @@
 <script setup>
+import { useFormErrors } from '@/lib/formErrors';
 import { ref, onMounted } from 'vue';
 import { Award, Plus } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
@@ -17,7 +18,7 @@ const data = ref({ received: [], given: [] });
 const loading = ref(false);
 const open = ref(false);
 const form = ref({});
-const errors = ref({});
+const errors = useFormErrors(() => form.value);
 const saving = ref(false);
 const categories = ref(['star_performer', 'innovation', 'teamwork', 'customer_service', 'leadership']);
 
