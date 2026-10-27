@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class GoalRating extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     protected $table = 'perf_goal_ratings';
 
     protected $guarded = ['id'];

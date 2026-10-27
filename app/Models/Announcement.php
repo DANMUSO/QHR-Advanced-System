@@ -13,6 +13,8 @@ use Spatie\Activitylog\Traits\LogsActivity;
 /** Company announcements. A null company_id broadcasts to every company. */
 class Announcement extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     use LogsActivity;
 
     protected $guarded = ['id', 'author_id'];

@@ -6,6 +6,7 @@ use App\Contracts\PayrollInputProvider;
 use App\Models\Employee;
 use App\Modules\Attendance\Models\AttendanceDay;
 use App\Modules\Attendance\Models\AttendanceOvertime;
+use App\Modules\Attendance\Services\AttendanceService;
 use Carbon\CarbonInterface;
 
 /**
@@ -26,8 +27,10 @@ class AttendancePayrollInputs implements PayrollInputProvider
             ->selectRaw("SUM(CASE WHEN day_type = 'working' THEN minutes ELSE 0 END) as normal, SUM(CASE WHEN day_type <> 'working' THEN minutes ELSE 0 END) as holiday")
             ->first();
 
+        // Absences are rows written when a finished day is finalised; make sure that happened for this period.
+        app(AttendanceService::class)->ensureFinalised($periodStart, $periodEnd, $employee->company_id);
         $absent = AttendanceDay::withoutGlobalScope('company')->where('employee_id', $employee->id)
-            ->whereBetween('date', $range)->where('status', 'absent')->count();
+            ->whereDate('date', '>=', $range[0])->whereDate('date', '<=', $range[1])->where('status', 'absent')->count();
 
         return [
             'overtime_hours_normal' => round(((int) ($ot->normal ?? 0)) / 60, 2),

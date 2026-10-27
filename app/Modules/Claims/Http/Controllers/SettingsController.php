@@ -39,7 +39,19 @@ class SettingsController extends Controller
                 'annual_limit' => (float) $company->setting('medical_annual_limit', Company::DEFAULT_SETTINGS['medical_annual_limit'] ?? 0),
                 'monthly_limit' => (float) $company->setting('medical_monthly_limit', Company::DEFAULT_SETTINGS['medical_monthly_limit'] ?? 0),
             ],
+            // Expense claims above this amount need a receipt (0 = always).
+            'expense_receipt_threshold' => (float) $company->setting('expense_receipt_threshold', 0),
         ]);
+    }
+
+    public function updateExpenseRules(Request $request): JsonResponse
+    {
+        $company = $this->company($request);
+        $data = $request->validate(['expense_receipt_threshold' => ['required', 'numeric', 'min:0', 'max:10000000']]);
+        $company->forceFill(['settings' => array_merge($company->settings ?? [], ['expense_receipt_threshold' => (float) $data['expense_receipt_threshold']])])->save();
+        activity('claims')->performedOn($company)->causedBy($request->user())->withProperties($data)->log('Expense receipt threshold updated');
+
+        return response()->json(['message' => 'Expense receipt rule saved.', 'expense_receipt_threshold' => (float) $data['expense_receipt_threshold']]);
     }
 
     public function updateApprovers(Request $request): JsonResponse

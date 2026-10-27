@@ -19,6 +19,25 @@ class ApprovalChain
     /** @return array<int, array{type: string, role?: string, label?: string}>|null */
     public static function steps(int $companyId, string $trigger): ?array
     {
+        // Inbox providers ask once per pending item; the chain only changes when a workflow is saved (cache cleared there).
+        $key = $companyId.'|'.$trigger;
+        if (! array_key_exists($key, self::$stepsCache)) { // null ("no chain") is cached too
+            self::$stepsCache[$key] = self::loadSteps($companyId, $trigger);
+        }
+
+        return self::$stepsCache[$key];
+    }
+
+    /** @var array<string, array|null> */
+    private static array $stepsCache = [];
+
+    public static function flushCache(): void
+    {
+        self::$stepsCache = [];
+    }
+
+    private static function loadSteps(int $companyId, string $trigger): ?array
+    {
         $steps = Workflow::stepsFor($companyId, $trigger);
         if (! $steps) {
             return null;

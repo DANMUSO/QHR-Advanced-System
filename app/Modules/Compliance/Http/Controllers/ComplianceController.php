@@ -89,6 +89,10 @@ class ComplianceController extends Controller
         if ($employee) {
             $data['employee_id'] = $employee->id;
         }
+        if ($type === 'data-protection' && $employee) {
+            $data['requester_name'] = ($data['requester_name'] ?? null) ?: $employee->full_name;
+            $data['requester_email'] = ($data['requester_email'] ?? null) ?: $employee->email;
+        }
 
         $generateLetter = $type === 'warnings' && $request->boolean('generate_letter', true);
         unset($data['generate_letter']);
@@ -189,7 +193,7 @@ class ComplianceController extends Controller
                 'category' => ['sometimes', Rule::in(['hazard', 'near_miss', 'accident', 'fire_safety', 'ergonomics'])],
                 'risk_level' => ['sometimes', Rule::in(['low', 'medium', 'high', 'critical'])],
                 'description' => ['nullable', 'string', 'max:5000'],
-                'reported_date' => ['nullable', 'date'],
+                'reported_date' => ['nullable', 'date', 'before_or_equal:today'], // a hazard is reported once seen, never ahead
                 'action_taken' => ['nullable', 'string', 'max:5000'],
                 'status' => ['sometimes', Rule::in(['open', 'in_progress', 'closed'])],
             ],
@@ -198,16 +202,17 @@ class ComplianceController extends Controller
                 'type' => ['sometimes', Rule::in(['accident', 'near_miss', 'property_damage', 'security'])],
                 'severity' => ['sometimes', Rule::in(['minor', 'moderate', 'serious', 'critical'])],
                 'location' => ['nullable', 'string', 'max:255'],
-                'incident_date' => ['nullable', 'date'],
+                'incident_date' => ['nullable', 'date', 'before_or_equal:'.now()->toDateTimeString()], // already happened
                 'description' => ['nullable', 'string', 'max:5000'],
                 'employee_id' => ['nullable'],
                 'corrective_action' => ['nullable', 'string', 'max:5000'],
                 'status' => ['sometimes', Rule::in(['open', 'investigating', 'closed'])],
             ],
             'data-protection' => [
-                'requester_name' => [$r, 'string', 'max:255'],
+                // The data subject is an employee record (name and email are taken from it when left blank).
+                'requester_name' => ['nullable', 'string', 'max:255'],
                 'requester_email' => ['nullable', 'email', 'max:255'],
-                'employee_id' => ['nullable'],
+                'employee_id' => [$r],
                 'type' => ['sometimes', Rule::in(['access', 'erasure', 'rectification', 'portability', 'objection'])],
                 'description' => ['nullable', 'string', 'max:5000'],
                 'submitted_date' => ['nullable', 'date'],
@@ -235,7 +240,10 @@ class ComplianceController extends Controller
             ],
         };
 
-        return array_filter($request->validate($rules), fn ($v, $k) => ! ($k === 'employee_id' && ($v === '' || $v === null)), ARRAY_FILTER_USE_BOTH);
+        $messages = ['reported_date.before_or_equal' => 'The reported date cannot be in the future.', 'incident_date.before_or_equal' => 'The incident date cannot be in the future.',
+            'employee_id.required' => 'Select the employee.'];
+
+        return array_filter($request->validate($rules, $messages), fn ($v, $k) => ! ($k === 'employee_id' && ($v === '' || $v === null)), ARRAY_FILTER_USE_BOTH);
     }
 
     /** Builds a new record with sensible defaults for blank dates/status. */

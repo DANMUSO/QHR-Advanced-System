@@ -11,6 +11,7 @@ use App\Modules\Employees\Models\ProfileChangeRequest;
 use App\Modules\Employees\Models\ResignationRequest;
 use App\Modules\Employees\Notifications\SelfServiceNotification;
 use App\Modules\Employees\Support\EmployeeRules;
+use App\Modules\Employees\Support\ResignationNotice;
 use App\Modules\Payroll\Models\PayrollPayProfile;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
@@ -247,6 +248,10 @@ class SelfServiceRequestService
             'You already have a resignation awaiting HR. Withdraw it first to change the details.');
         abort_if(ExitRecord::where('employee_id', $e->id)->where('status', 'scheduled')->exists(), 422,
             'HR has already scheduled your exit. Contact HR to change it.');
+        $notice = $data['notice_date'] ?? now()->toDateString();
+        if (\Carbon\Carbon::parse($data['last_working_day'])->lt(ResignationNotice::earliestLastDay($e, $notice))) {
+            throw ValidationException::withMessages(['last_working_day' => ResignationNotice::message($e, $notice)]);
+        }
 
         $r = new ResignationRequest([
             'employee_id' => $e->id, 'status' => 'pending', 'notice_date' => $data['notice_date'] ?? now()->toDateString(),

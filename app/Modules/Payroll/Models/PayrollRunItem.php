@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** A payslip line. Child of PayrollRunEmployee (no company_id; always loaded through the parent). */
 class PayrollRunItem extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     public $timestamps = false;
 
     protected $guarded = ['id'];

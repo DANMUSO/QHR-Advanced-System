@@ -40,7 +40,7 @@ class LeaveBalancesWidget extends Widget
             'items' => $items->map(fn ($b) => [
                 'name' => $b['name'], 'code' => $b['code'], 'color' => $b['color'],
                 'available' => $b['available'], 'projected' => $b['projected'], 'pending' => $b['pending'],
-                'taken' => $b['taken'], 'earned' => $b['earned'], 'entitlement' => $b['entitlement'],
+                'taken' => $b['taken'], 'booked' => $b['booked'], 'earned' => $b['earned'], 'entitlement' => $b['entitlement'],
             ]),
             'next' => $next ? [
                 'type' => $next->leaveType?->name, 'start_date' => $next->start_date->toDateString(),

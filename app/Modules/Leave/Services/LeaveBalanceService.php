@@ -134,6 +134,64 @@ class LeaveBalanceService
             ->sum('days');
     }
 
+    /**
+     * Approved days still in the future (after today): booked / scheduled, not yet taken. The ledger deducts them
+     * at approval, so available already excludes them; displays split "taken" into taken-to-date and booked.
+     */
+    public function bookedDays(Employee $employee, LeaveType $ledgerType, int $year, ?Carbon $asOf = null): float
+    {
+        $asOf = ($asOf ?? today())->copy()->startOfDay();
+        $typeIds = LeaveType::withoutGlobalScopes()->where('company_id', $ledgerType->company_id)
+            ->where(fn ($q) => $q->where('id', $ledgerType->id)->orWhere('balance_type_id', $ledgerType->id))->pluck('id');
+        $requests = LeaveRequest::withoutGlobalScopes()->with('leaveType')
+            ->where('employee_id', $employee->id)->whereIn('leave_type_id', $typeIds)
+            ->where('status', LeaveRequest::APPROVED)->whereYear('start_date', $year)
+            ->whereDate('end_date', '>', $asOf->toDateString())->get();
+
+        $company = null;
+        $booked = 0.0;
+        foreach ($requests as $r) {
+            if ($r->start_date->gt($asOf)) {
+                $booked += (float) $r->days;
+
+                continue;
+            }
+            // Under way: only the days after today are still to come.
+            $company ??= $employee->company ?? Company::find($employee->company_id);
+            $rest = app(LeaveDayCounter::class)->forType($r->leaveType, $company, $asOf->copy()->addDay(), $r->end_date)['days'] ?? 0;
+            $booked += min((float) $r->days, (float) $rest);
+        }
+
+        return round($booked, 2);
+    }
+
+    /**
+     * Booked (future approved) days for many employees, keyed "employeeId-ledgerTypeId" (the type a request draws from).
+     *
+     * @param  int[]|null  $employeeIds
+     */
+    public function bookedMap(int $year, ?array $employeeIds = null, ?Carbon $asOf = null): array
+    {
+        $asOf = ($asOf ?? today())->copy()->startOfDay();
+        $requests = LeaveRequest::withoutGlobalScopes()->with(['leaveType', 'employee' => fn ($q) => $q->withoutGlobalScopes()->with('company')])
+            ->when($employeeIds !== null, fn ($q) => $q->whereIn('employee_id', $employeeIds))
+            ->where('status', LeaveRequest::APPROVED)->whereYear('start_date', $year)
+            ->whereDate('end_date', '>', $asOf->toDateString())->get();
+
+        $map = [];
+        foreach ($requests as $r) {
+            $days = (float) $r->days;
+            if (! $r->start_date->gt($asOf) && $r->leaveType && $r->employee?->company) {
+                $rest = app(LeaveDayCounter::class)->forType($r->leaveType, $r->employee->company, $asOf->copy()->addDay(), $r->end_date)['days'] ?? 0;
+                $days = min($days, (float) $rest);
+            }
+            $key = $r->employee_id.'-'.($r->leaveType?->balance_type_id ?: $r->leave_type_id);
+            $map[$key] = round(($map[$key] ?? 0) + $days, 2);
+        }
+
+        return $map;
+    }
+
     /** Balance cards for an employee: every active type they are eligible for. */
     public function summary(Employee $employee, ?int $year = null): Collection
     {
@@ -148,6 +206,8 @@ class LeaveBalanceService
             // Types without a balance (e.g. unpaid) have no ledger row: count the approved requests instead.
             $takenNoBalance = $ledger->has_balance ? null : (float) LeaveRequest::withoutGlobalScopes()->where('employee_id', $employee->id)
                 ->where('leave_type_id', $t->id)->taken()->whereYear('start_date', $year)->sum('days');
+            $booked = $this->bookedDays($employee, $ledger->has_balance ? $ledger : $t, $year);
+            $approved = (float) ($takenNoBalance ?? $balance?->taken ?? 0);
 
             return [
                 'leave_type_id' => $t->id,
@@ -167,7 +227,9 @@ class LeaveBalanceService
                 'accrued' => $balance?->accrued ?? 0,
                 'carried_forward' => $balance?->carried_forward ?? 0,
                 'adjusted' => $balance?->adjusted ?? 0,
-                'taken' => $takenNoBalance ?? $balance?->taken ?? 0,
+                // taken = approved days up to today; booked = approved days still ahead. Available subtracts both.
+                'taken' => round(max(0, $approved - $booked), 2),
+                'booked' => $booked,
                 'forfeited' => $balance?->forfeited ?? 0,
                 'earned' => $balance?->earned ?? 0,
                 'available' => $balance?->available ?? null,

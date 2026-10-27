@@ -73,7 +73,8 @@ Route::middleware(['auth:sanctum', 'account.secure'])->group(function () {
         Route::delete('announcements/{announcement}', [AnnouncementController::class, 'destroy']);
     });
 
-    Route::post('admin/impersonate/{user}', [ImpersonationController::class, 'start'])->middleware('permission:users.impersonate');
+    // Permission checked in the controller so an admin who is already impersonating gets a clear message.
+    Route::post('admin/impersonate/{user}', [ImpersonationController::class, 'start']);
     Route::middleware('permission:audit.view')->prefix('admin')->group(function () {
         Route::get('login-activities', [AuditController::class, 'loginActivities']);
         Route::get('activity-log', [AuditController::class, 'activityLog']);

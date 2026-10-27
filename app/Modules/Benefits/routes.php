@@ -17,6 +17,7 @@ Route::prefix('expenses')->group(function () {
     Route::get('approvals', [ExpenseController::class, 'approvals']);
     Route::post('{id}/approve', [ExpenseController::class, 'approve'])->whereNumber('id');
     Route::post('{id}/reject', [ExpenseController::class, 'reject'])->whereNumber('id');
+    Route::get('{id}/receipt', [ExpenseController::class, 'receipt'])->whereNumber('id');
 
     // Travel approvals: supervisor (or HR fallback); authorised in the controller.
     Route::get('travel/approvals', [TravelApprovalController::class, 'index']);

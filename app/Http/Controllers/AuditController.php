@@ -18,14 +18,16 @@ class AuditController extends Controller
 {
     public function loginActivities(Request $request): JsonResponse
     {
-        $query = LoginActivity::with('user:id,name,email')->latest('created_at')
+        $query = LoginActivity::with(['user:id,name,email', 'impersonator:id,name,email'])->latest('created_at')->latest('id')
             ->when($request->query('event'), fn ($q, $e) => $q->where('event', $e))
             ->when($request->query('search'), fn ($q, $s) => $q->where(fn ($w) => $w->where('email', 'like', "%{$s}%")->orWhere('ip_address', 'like', "%{$s}%")))
             ->when($request->query('from'), fn ($q, $d) => $q->whereDate('created_at', '>=', $d))
             ->when($request->query('to'), fn ($q, $d) => $q->whereDate('created_at', '<=', $d));
 
+        // Rows carry the account's company at the time; the user match also covers rows logged before that column.
         if ($companyId = Tenancy::companyId()) {
-            $query->whereIn('user_id', User::where('company_id', $companyId)->select('id'));
+            $query->where(fn ($w) => $w->where('company_id', $companyId)
+                ->orWhereIn('user_id', User::where('company_id', $companyId)->select('id')));
         }
 
         return response()->json($query->paginate(25));
@@ -90,6 +92,10 @@ class AuditController extends Controller
     {
         static $cache = [];
 
-        return $cache["{$table}.{$column}"] ??= Schema::hasColumn($table, $column);
+        // Each request under `artisan serve` is a fresh process, so the static cache alone re-ran dozens of
+        // schema queries on every dashboard load; the column listing is cached across requests too.
+        $columns = $cache[$table] ??= Cache::remember("audit.columns.{$table}", 600, fn () => Schema::getColumnListing($table));
+
+        return in_array($column, $columns, true);
     }
 }

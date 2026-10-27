@@ -17,6 +17,13 @@ const ui = useUiStore();
 ui.applyTheme();
 
 configureApi({
+    // The record behind the open page (its id is in the request URL) is not in the selected company: back to the list.
+    onRecordNotFound(url) {
+        const route = router.currentRoute.value;
+        const ids = Object.entries(route.params ?? {}).filter(([k, v]) => k !== 'pathMatch' && v).map(([, v]) => String(v));
+        const path = url.split('?')[0];
+        if (ids.length && ids.some((id) => path.split('/').pop() === id)) ui.leaveForeignRecord(router);
+    },
     onCompanyRequired() {
         ui.companyRequired = true;
     },

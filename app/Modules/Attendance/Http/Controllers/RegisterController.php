@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Modules\Attendance\Models\AttendanceDay;
 use App\Modules\Attendance\Models\AttendancePunch;
 use App\Modules\Attendance\Services\AttendanceService;
+use App\Modules\Attendance\Services\HistoryBuilder;
 use App\Modules\Attendance\Services\PunchRecorder;
 use App\Modules\Attendance\Support\AttendanceAccess;
 use App\Modules\Attendance\Support\Presenter;
@@ -91,28 +92,87 @@ class RegisterController extends Controller
             'absent' => $rows->where('status', 'absent')->count(),
             'on_leave' => $rows->where('status', 'on_leave')->count(),
             'incomplete' => $rows->where('status', 'incomplete')->count(),
+            'not_in' => $rows->where('status', 'not_in')->count(),
+            'off' => $rows->whereIn('status', ['weekend', 'holiday'])->count(),
         ];
     }
 
-    /** One day, unpaged (supervisors see their team). */
+    private function companyFilter(array $f): ?int
+    {
+        return Tenancy::isGlobal() ? (! empty($f['company_id']) ? (int) $f['company_id'] : null) : Tenancy::companyId();
+    }
+
+    /** Finished days in the range get their absentees written first, whether or not the nightly job ran. */
+    private function finalise(array $f, string $from, string $to): void
+    {
+        $this->service->ensureFinalised(CarbonImmutable::parse($from), CarbonImmutable::parse($to), $this->companyFilter($f));
+    }
+
+    /**
+     * One day, unpaged (supervisors see their team). Lists everyone employed that day: stored rows plus,
+     * for people without one, their live status (not clocked in / absent today, holiday or off).
+     */
     public function daily(Request $request): JsonResponse
     {
         $f = $this->filters($request);
         $f['date'] ??= today()->toDateString();
         $f['from'] = $f['to'] = $f['date'];
-        $rows = $this->query($request, $f)->get();
+        $this->finalise($f, $f['date'], $f['date']);
+        $rows = $this->query($request, $f)->get()->map(fn ($d) => Presenter::day($d));
+
+        $date = CarbonImmutable::parse($f['date']);
+        if ($date->lte(today()) && empty($f['flag'])) {
+            $rows = $rows->concat($this->unrecorded($request, $f, $date, $rows->pluck('employee_id')->all()));
+        }
+        $rows = $rows->sortBy(fn ($r) => mb_strtolower($r['employee']['name'] ?? ''))->values();
 
         return response()->json([
-            'data' => $rows->map(fn ($d) => Presenter::day($d))->values(),
+            'data' => $rows,
             'summary' => self::summary($rows),
             'date' => $f['date'],
         ]);
+    }
+
+    /** Employees employed on the date who have no stored row, with their live status. */
+    private function unrecorded(Request $request, array $f, CarbonImmutable $date, array $exclude): array
+    {
+        $user = $request->user();
+        $employees = $this->service->rosterQuery($date, $this->companyFilter($f))
+            ->with(['branch:id,name', 'department:id,name'])
+            ->whereNotIn('id', $exclude)
+            ->when($f['employee_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
+            ->when($f['branch_id'] ?? null, fn ($x, $b) => $x->where('branch_id', $b))
+            ->when($f['department_id'] ?? null, fn ($x, $d) => $x->where('department_id', $d))
+            ->search($f['search'] ?? null)
+            ->when(! AttendanceAccess::managesAll($user), fn ($q) => $q->whereIn('id', AttendanceAccess::teamQuery($user)->pluck('id')))
+            ->get();
+
+        $out = [];
+        foreach ($this->service->liveStatuses($employees, $date) as $id => $s) {
+            $status = $s['status'] === 'day_off' ? $s['day_type'] : $s['status'];
+            if (! empty($f['status']) && $f['status'] !== $status) {
+                continue;
+            }
+            $out[] = [
+                'id' => null, 'date' => $date->toDateString(), 'employee_id' => $id,
+                'employee' => Presenter::employee($employees->firstWhere('id', $id)),
+                'day_type' => $s['day_type'], 'first_in' => Presenter::time($s['first_in']), 'last_out' => Presenter::time($s['last_out']),
+                'punch_count' => $s['punch_count'], 'worked_minutes' => $s['worked_minutes'], 'worked_formatted' => Presenter::duration($s['worked_minutes']),
+                'late_minutes' => $s['late_minutes'], 'overtime_minutes' => 0, 'overtime_formatted' => null,
+                'status' => $status, 'status_label' => HistoryBuilder::statusLabel($status),
+                'computed_status' => $status, 'override_status' => null, 'override_reason' => null,
+            ];
+        }
+
+        return $out;
     }
 
     /** Paged register over a date range. */
     public function register(Request $request): JsonResponse
     {
         $f = $this->filters($request);
+        $from = $f['from'] ?? $f['date_from'] ?? $f['date'] ?? today()->toDateString();
+        $this->finalise($f, $from, $f['to'] ?? $f['date_to'] ?? $f['date'] ?? $from);
         $base = $this->query($request, $f);
         $agg = (clone $base)->reorder()->toBase()->selectRaw(
             "COUNT(*) as total_rows,
@@ -141,6 +201,8 @@ class RegisterController extends Controller
     public function export(Request $request): StreamedResponse
     {
         $f = $this->filters($request);
+        $from = $f['from'] ?? $f['date_from'] ?? $f['date'] ?? today()->toDateString();
+        $this->finalise($f, $from, $f['to'] ?? $f['date_to'] ?? $f['date'] ?? $from);
         $query = $this->query($request, $f);
         $name = 'attendance-'.($f['from'] ?? $f['date_from'] ?? $f['date'] ?? today()->toDateString()).'.csv';
 

@@ -74,7 +74,9 @@ class Employee extends Model
             $like = '%'.$term.'%';
             $w->where('first_name', 'like', $like)->orWhere('last_name', 'like', $like)
                 ->orWhere('email', 'like', $like)->orWhere('employee_number', 'like', $like)
-                ->orWhere('phone', 'like', $like)->orWhereRaw("CONCAT(first_name,' ',last_name) like ?", [$like]);
+                ->orWhere('phone', 'like', $like)->orWhereRaw(
+                    ($w->getConnection()->getDriverName() === 'sqlite' ? "first_name || ' ' || last_name" : "CONCAT(first_name,' ',last_name)").' like ?', [$like]
+                );
         });
     }
 

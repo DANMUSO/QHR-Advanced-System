@@ -18,6 +18,8 @@ use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, LogsActivity, Notifiable;
 

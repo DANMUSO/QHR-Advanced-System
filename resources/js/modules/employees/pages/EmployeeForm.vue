@@ -50,11 +50,7 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' '
 const needsEndDate = computed(() => form.value.contract_type && form.value.contract_type !== 'permanent');
 // Probation months follow the employment level's default until the user types their own value.
 const probationTouched = ref(false);
-watch(() => form.value.employment_level_id, (id) => {
-    if (probationTouched.value || !id) return;
-    const level = meta.value?.levels?.find((l) => String(l.id) === String(id));
-    if (level && level.probation_months != null) form.value.probation_months = level.probation_months;
-});
+const applicant = ref(null);
 
 /** Mirrors the server's required rules so every missing field is flagged in one go (server errors are merged in). */
 function clientErrors() {
@@ -97,6 +93,20 @@ const defaultForm = () => ({
 });
 
 const form = ref(defaultForm());
+
+// Watchers that read `form` must come after its declaration: declaring one earlier throws
+// "Cannot access 'form' before initialization" when the component is set up.
+// Picking a position (user action only, so loading a saved record keeps its level) fills in the
+// position's employment level; the level watcher then fills in probation months.
+function onPositionPicked() {
+    const position = meta.value?.positions?.find((p) => String(p.id) === String(form.value.position_id));
+    if (position?.employment_level_id) form.value.employment_level_id = position.employment_level_id;
+}
+watch(() => form.value.employment_level_id, (id) => {
+    if (probationTouched.value || !id) return;
+    const level = meta.value?.levels?.find((l) => String(l.id) === String(id));
+    if (level && level.probation_months != null) form.value.probation_months = level.probation_months;
+});
 
 // Clear a field's validation message as soon as the user changes that field.
 watch(() => ({ ...form.value }), (now, before) => {
@@ -184,7 +194,6 @@ watch(() => props.open, async (val) => {
         loading.value = false;
     }
 });
-const applicant = ref(null);
 
 watch(() => form.value.company_id, async (val, old) => {
     if (!val || val === old) return;
@@ -379,7 +388,7 @@ function removeNok(i) { if (form.value.next_of_kin.length > 1) form.value.next_o
                         </div>
                         <div>
                             <label class="label">Position <span class="text-red-500">*</span></label>
-                            <select v-model="form.position_id" class="input" :class="errors.position_id && 'border-red-500'">
+                            <select v-model="form.position_id" class="input" :class="errors.position_id && 'border-red-500'" @change="onPositionPicked">
                                 <option value="">— Select —</option>
                                 <option v-for="p in meta?.positions" :key="p.id" :value="p.id">{{ p.title }}</option>
                             </select>

@@ -142,7 +142,8 @@ class PayrollQaFixesTest extends TestCase
         $items = $line->items()->get()->keyBy('code');
         $this->assertEquals(10000, $items['ADVANCE']->amount, 'final dues recover the outstanding advance in full');
         $this->assertEqualsWithDelta(60000 / 22 * 4, $items['LEAVE_ENC']->amount, 0.01);
-        $this->assertEqualsWithDelta(60000 * 20 / 30, $items['BASIC']->amount, 0.05);
+        // Working-day proration: 15 of November 2026's 21 working days up to the 20th.
+        $this->assertEqualsWithDelta(60000 * 15 / 21, $items['BASIC']->amount, 0.05);
     }
 
     public function test_payment_ready_requires_basic_salary_and_payment_details(): void

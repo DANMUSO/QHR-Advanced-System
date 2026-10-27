@@ -137,8 +137,9 @@ class PayrollWorkflowTest extends TestCase
         $this->assertSame(2, $aug['employee_count']);
         $line = $this->line($aug['id'], $leaver->id);
         $this->assertNotNull($line, 'leaver must be paid for the exit month');
-        $this->assertEquals(15, $line->days_worked);
-        $this->assertEqualsWithDelta(62000 * 15 / 31, $line->basic_pay, 0.05);
+        // Working-day proration: 1–15 Aug 2026 has 10 of the month's 21 working days.
+        $this->assertEquals(10, $line->days_worked);
+        $this->assertEqualsWithDelta(62000 * 10 / 21, $line->basic_pay, 0.05);
 
         $sep = $this->createRun(['period' => '2026-09']);
         $this->assertSame(1, $sep['employee_count']);
@@ -162,7 +163,7 @@ class PayrollWorkflowTest extends TestCase
         $line = $this->line($run['id'], $leaver->id);
         $this->assertNotNull($line);
         $items = $line->items()->get()->keyBy('code');
-        $this->assertEqualsWithDelta(44000 * 20 / 31, $items['BASIC']->amount, 0.05, 'no regular run yet: final dues pay the prorated month');
+        $this->assertEqualsWithDelta(44000 * 14 / 21, $items['BASIC']->amount, 0.05, 'no regular run yet: final dues pay the prorated month (14 of 21 working days)');
         $this->assertEqualsWithDelta(44000 / 22 * 5, $items['LEAVE_ENC']->amount, 0.01);
         $this->assertEquals(10000, $items['NOTICE_PAY']->amount);
         $this->assertEquals(4000, $items['ADVANCE']->amount, 'final dues recover the whole outstanding advance');

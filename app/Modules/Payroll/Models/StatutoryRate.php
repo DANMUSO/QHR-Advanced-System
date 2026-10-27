@@ -10,6 +10,8 @@ use Spatie\Activitylog\Traits\LogsActivity;
 /** Global Kenyan statutory table row (statute applies to every company), effective-dated. */
 class StatutoryRate extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     use LogsActivity;
 
     public const TYPES = [

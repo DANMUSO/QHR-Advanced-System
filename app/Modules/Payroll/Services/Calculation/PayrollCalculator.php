@@ -24,24 +24,36 @@ final class PayrollCalculator
         $basic = max(0.0, $in->basicSalary);
 
         // ---- Days & proration ------------------------------------------------------------
+        // One proration rule for joiners, leavers, unpaid and half-pay leave: WORKING days (Mon–Fri less holidays).
+        //   employment factor = working days employed in the period / working days in the period
+        //   pay factor        = (working days employed − unpaid days − ½ × half-pay days) / working days in the period
+        // Basic pay, recurring fixed earnings and percent-of-basic components all follow the same pay factor.
         $daysInPeriod = $in->periodStart->diffInDays($in->periodEnd) + 1;
         $from = $in->employmentStart && $in->employmentStart->gt($in->periodStart) ? $in->employmentStart : $in->periodStart;
         $to = $in->employmentEnd && $in->employmentEnd->lt($in->periodEnd) ? $in->employmentEnd : $in->periodEnd;
-        $daysWorked = $to->lt($from) ? 0 : $from->diffInDays($to) + 1;
-        $factor = $in->prorate ? ($daysInPeriod > 0 ? $daysWorked / $daysInPeriod : 0) : 1.0;
         $workingDays = $in->workingDays > 0 ? $in->workingDays : 22;
+        $wholePeriod = $from->equalTo($in->periodStart) && $to->equalTo($in->periodEnd);
+        $daysWorked = (float) match (true) {
+            ! $in->prorate || ($wholePeriod && $in->employedWorkingDays === null) => $workingDays,
+            $to->lt($from) => 0.0,
+            $in->employedWorkingDays !== null => max(0.0, min($workingDays, $in->employedWorkingDays)),
+            default => min($workingDays, (float) self::weekdays($from, $to)),
+        };
+        $factor = $daysWorked / $workingDays;
 
         $unpaidDays = max(0.0, $in->input('unpaid_leave_days'));
         $halfPayDays = max(0.0, $in->input('half_pay_leave_days'));
         $otNormal = max(0.0, $in->input('overtime_hours_normal'));
         $otHoliday = max(0.0, $in->input('overtime_hours_holiday'));
+        $lostDays = min($daysWorked, $unpaidDays + 0.5 * $halfPayDays);
+        $payFactor = max(0.0, ($daysWorked - $lostDays) / $workingDays);
 
         $basicPay = 0.0;
         $proratedBasic = 0.0;
         $overtimePay = 0.0;
         if ($in->includeBasic) {
             $proratedBasic = $this->money($basic * $factor);
-            $items[] = $this->item('BASIC', $factor < 1 ? sprintf('Basic salary (%d/%d days)', $daysWorked, $daysInPeriod) : 'Basic salary',
+            $items[] = $this->item('BASIC', $factor < 1 ? sprintf('Basic salary (%s/%s working days)', $this->num($daysWorked), $this->num($workingDays)) : 'Basic salary',
                 'earning', $proratedBasic, ['source' => 'basic', 'sort_order' => 1, 'quantity' => $factor < 1 ? $daysWorked : null]);
 
             $dailyRate = $basic / $workingDays;
@@ -89,12 +101,12 @@ final class PayrollCalculator
 
                 continue;
             }
-            $amt = $this->componentAmount($c, $proratedBasic, 0, $vars, $factor);
+            $amt = $this->componentAmount($c, $basicPay, 0, $vars, $payFactor);
             $gross += $this->addEarning($items, $c, $amt, $nonTaxable, $pensionable);
         }
         $vars['gross'] = $gross;
         foreach ($deferred as $c) {
-            $amt = $this->componentAmount($c, $proratedBasic, $vars['gross'], $vars, $factor);
+            $amt = $this->componentAmount($c, $basicPay, $vars['gross'], $vars, $payFactor);
             $gross += $this->addEarning($items, $c, $amt, $nonTaxable, $pensionable);
         }
         $gross = $this->money($gross);
@@ -138,7 +150,7 @@ final class PayrollCalculator
             if (! in_array($cat, ['deduction', 'employer_contribution'], true) || ($c['meta_only'] ?? false)) {
                 continue;
             }
-            $amt = $this->money($this->componentAmount($c, $proratedBasic, $gross, $vars, $factor, prorateFixed: false));
+            $amt = $this->money($this->componentAmount($c, $basicPay, $gross, $vars, $payFactor, prorateFixed: false));
             if ($amt == 0.0) {
                 continue;
             }
@@ -341,23 +353,35 @@ final class PayrollCalculator
         ];
     }
 
-    private function componentAmount(array $c, float $proratedBasic, float $gross, array $vars, float $factor, bool $prorateFixed = true): float
+    /** percent_of_basic is taken on basic pay after proration and leave; recurring fixed earnings scale by the pay factor. */
+    private function componentAmount(array $c, float $basicPay, float $gross, array $vars, float $factor, bool $prorateFixed = true): float
     {
         $calc = $c['calculation'] ?? 'fixed';
         $rate = (float) ($c['rate'] ?? 0);
         $amount = match ($calc) {
-            'percent_of_basic' => $proratedBasic * $rate / 100,
+            'percent_of_basic' => $basicPay * $rate / 100,
             'percent_of_gross' => $gross * $rate / 100,
             'formula' => $this->formulas->evaluate((string) ($c['formula'] ?? '0'), $vars),
             default => (float) ($c['amount'] ?? 0),
         };
-        // Recurring fixed earnings follow the employee's days in employment for joiners / leavers.
-        $isRecurring = ($c['source'] ?? 'component') !== 'one_off' && ($c['recurring'] ?? true);
+        // Recurring fixed earnings follow the same pay factor as basic (joiners, leavers, unpaid / half-pay leave).
+        $isRecurring = ! in_array($c['source'] ?? 'component', ['one_off', 'leave_settlement'], true) && ($c['recurring'] ?? true);
         if ($calc === 'fixed' && $prorateFixed && $isRecurring && $factor < 1) {
             $amount *= $factor;
         }
 
         return $this->money($amount);
+    }
+
+    /** Mon–Fri between two dates (fallback when the caller did not supply holiday-aware working days). */
+    private static function weekdays(\Carbon\CarbonInterface $from, \Carbon\CarbonInterface $to): int
+    {
+        $n = 0;
+        for ($d = $from->startOfDay(); $d->lte($to); $d = $d->addDay()) {
+            $n += $d->isWeekend() ? 0 : 1;
+        }
+
+        return $n;
     }
 
     private function addEarning(array &$items, array $c, float $amount, float &$nonTaxable, float &$pensionable): float
@@ -374,7 +398,7 @@ final class PayrollCalculator
         $items[] = $this->item($c['code'], $c['name'], 'earning', $amount, [
             'taxable' => (bool) ($c['taxable'] ?? true), 'source' => $c['source'] ?? 'component', 'source_id' => $c['source_id'] ?? null,
             'gl_account' => $c['gl_account'] ?? null, 'component_id' => $c['component_id'] ?? null,
-            'sort_order' => ($c['source'] ?? '') === 'one_off' ? 60 : 20,
+            'sort_order' => in_array($c['source'] ?? '', ['one_off', 'leave_settlement'], true) ? 60 : 20,
         ]);
 
         return $amount;

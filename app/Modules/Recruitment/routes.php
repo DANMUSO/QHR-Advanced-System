@@ -25,6 +25,7 @@ Route::prefix('recruitment')->group(function () {
     Route::middleware('permission:recruitment.manage')->group(function () {
         Route::get('postings', [R::class, 'postings']);
         Route::get('applicants', [R::class, 'applicants']);
+        Route::get('applicants/{id}', [R::class, 'showApplicant'])->whereNumber('id');
         Route::get('applicants/{id}/cv', [R::class, 'applicantCv'])->whereNumber('id');
         Route::get('interviews', [R::class, 'interviews']);
         Route::get('offers', [R::class, 'offers']);

@@ -83,13 +83,17 @@ class RecruitmentController extends Controller
         return response()->json(['data' => $req->fresh(), 'message' => "Requisition {$req->requisition_number} {$req->status}."]);
     }
 
+    /**
+     * The requester never decides their own requisition — not even a super admin. The id comparison comes first,
+     * before any permission check, so a Gate::before super-admin bypass cannot short-circuit it.
+     */
     public static function canDecideRequisition(User $user, Requisition $req): bool
     {
-        if ($user->hasRole('super-admin')) {
-            return true;
+        if ($req->requested_by !== null && (int) $req->requested_by === (int) $user->id) {
+            return false;
         }
 
-        return (int) $req->requested_by !== (int) $user->id && $user->can('recruitment.manage');
+        return $user->can('recruitment.manage');
     }
 
     /** A requester (without recruitment.manage) may only change their own requisition while it is not yet approved. */
@@ -264,23 +268,92 @@ class RecruitmentController extends Controller
         return response()->json(['data' => $this->presentApplicant($applicant->fresh()), 'message' => 'Applicant updated.']);
     }
 
+    /**
+     * PATCH /recruitment/applicants/{id}/stage {stage, reason?} — advance an applicant, reject them (with a reason) or
+     * mark an applicant holding an offer as hired. The offer stage is reached by creating an offer, not from here.
+     */
     public function moveStage(Request $request, int $id): JsonResponse
     {
-        $data = $request->validate(['stage' => ['required', Rule::in(Applicant::STAGES)]]);
-        $applicant = Applicant::findOrFail($id);
-        $applicant->update(['stage' => $data['stage'], 'hired_at' => $data['stage'] === 'hired' ? now() : $applicant->hired_at]);
+        $data = $request->validate([
+            'stage' => ['required', Rule::in(Applicant::STAGES)],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+        $applicant = Applicant::with('posting')->findOrFail($id);
+        $to = $data['stage'];
+        $reason = trim((string) ($data['reason'] ?? ''));
 
-        if ($data['stage'] === 'hired') {
-            $filled = Applicant::where('posting_id', $applicant->posting_id)->where('stage', 'hired')->count();
-            $posting = $applicant->posting;
-            if ($posting?->requisition_id && ($req = Requisition::find($posting->requisition_id)) && $req->status === 'approved' && $filled >= $req->vacancies) {
-                $req->update(['status' => 'filled']);
-            }
+        abort_if($applicant->stage === 'hired', 422, "{$applicant->name} has already been hired.");
+        abort_if($to === $applicant->stage, 422, "{$applicant->name} is already at the {$to} stage.");
+        abort_if($to === 'offer', 422, 'Create an offer from the Offers tab to move an applicant to the offer stage.');
+        abort_if($to === 'hired' && $applicant->stage !== 'offer', 422, 'Only an applicant holding an offer can be marked hired.');
+        abort_if($to === 'rejected' && $reason === '', 422, 'Give a reason for rejecting the applicant.');
+
+        if ($to === 'hired') {
+            $this->hire($applicant);
+        } else {
+            $notes = $to === 'rejected' ? trim(($applicant->notes ? $applicant->notes."\n" : '').'Rejected '.now()->toDateString().': '.$reason) : $applicant->notes;
+            $applicant->update(['stage' => $to, 'notes' => $notes]);
         }
+        activity('recruitment')->performedOn($applicant)->causedBy($request->user())
+            ->withProperties(array_filter(['stage' => $to, 'reason' => $reason ?: null]))->log("Applicant moved to {$to}");
 
-        return response()->json(['data' => $this->presentApplicant($applicant->fresh()), 'message' => 'Moved to '.str_replace('_', ' ', $data['stage']).'.']);
+        return response()->json(['data' => $this->presentApplicant($applicant->fresh()), 'message' => 'Moved to '.str_replace('_', ' ', $to).'.']);
     }
 
+    /** GET /recruitment/applicants/{id} — the applicant with their interviews, offers and CV. */
+    public function showApplicant(int $id): JsonResponse
+    {
+        $a = Applicant::with(['posting:id,title', 'interviews.interviewer:id,first_name,last_name', 'offers'])->findOrFail($id);
+
+        return response()->json(['data' => $this->presentApplicant($a) + [
+            'interviews' => $a->interviews->sortByDesc('scheduled_at')->values()->map(fn (Interview $i) => [
+                'id' => $i->id, 'interview_type' => $i->interview_type, 'scheduled_at' => $i->scheduled_at?->format('Y-m-d H:i'),
+                'interviewer_name' => $i->interviewer?->full_name, 'location' => $i->location, 'status' => $i->status,
+                'score' => $i->score, 'feedback' => $i->feedback,
+            ]),
+            'offers' => $a->offers->sortByDesc('id')->values()->map(fn (Offer $o) => [
+                'id' => $o->id, 'offered_salary' => (float) $o->offered_salary, 'start_date' => $o->start_date?->toDateString(),
+                'expiry_date' => $o->expiry_date?->toDateString(), 'status' => $o->effectiveStatus(), 'sent_at' => $o->sent_at,
+                'pdf_url' => url("/api/recruitment/offers/{$o->id}/pdf"),
+            ]),
+        ]]);
+    }
+
+    /** Marks the applicant hired, refusing once the requisition's vacancies are all filled, and fills the requisition on the last hire. */
+    private function hire(Applicant $applicant): void
+    {
+        $req = $this->requisitionFor($applicant);
+        if ($req) {
+            $hired = Applicant::where('posting_id', $applicant->posting_id)->where('stage', 'hired')->whereKeyNot($applicant->id)->count();
+            abort_if($hired >= $req->vacancies, 422, "All {$req->vacancies} vacancies on {$req->requisition_number} are already filled.");
+        }
+        $applicant->update(['stage' => 'hired', 'hired_at' => $applicant->hired_at ?? now()]);
+        if ($req && $req->status === 'approved' && $hired + 1 >= $req->vacancies) {
+            $req->update(['status' => 'filled']);
+        }
+    }
+
+    private function requisitionFor(Applicant $applicant): ?Requisition
+    {
+        $reqId = $applicant->posting?->requisition_id;
+
+        return $reqId ? Requisition::find($reqId) : null;
+    }
+
+    /** Refuses an offer unless the applicant has reached interview stage, is not hired and holds no accepted or open offer. */
+    private function assertCanOffer(Applicant $applicant, ?int $ignoreOfferId = null): void
+    {
+        abort_if($applicant->employee_id || $applicant->stage === 'hired', 422, "{$applicant->name} has already been hired.");
+        $offers = $applicant->offers()->when($ignoreOfferId, fn ($q) => $q->whereKeyNot($ignoreOfferId))->get();
+        abort_if($offers->contains('status', 'accepted'), 422, "{$applicant->name} has already accepted an offer.");
+        abort_if($offers->contains(fn (Offer $o) => in_array($o->effectiveStatus(), ['draft', 'sent'], true)), 422, "{$applicant->name} already has an open offer. Edit that offer instead.");
+        abort_unless(in_array($applicant->stage, Applicant::OFFERABLE_STAGES, true), 422,
+            "Offers can only be made to applicants at the interview stage or later ({$applicant->name} is at {$applicant->stage}).");
+        if ($req = $this->requisitionFor($applicant)) {
+            $hired = Applicant::where('posting_id', $applicant->posting_id)->where('stage', 'hired')->count();
+            abort_if($hired >= $req->vacancies || $req->status === 'filled', 422, "All {$req->vacancies} vacancies on {$req->requisition_number} are already filled.");
+        }
+    }
     public function destroyApplicant(int $id): JsonResponse
     {
         Applicant::findOrFail($id)->delete();
@@ -296,6 +369,10 @@ class RecruitmentController extends Controller
             'source' => $a->source, 'notes' => $a->notes, 'applied_at' => $a->applied_at?->toDateString(),
             'cover_letter' => $a->cover_letter, 'cv_url' => $a->cv_path ? url("/api/recruitment/applicants/{$a->id}/cv") : null,
             'employee_id' => $a->employee_id, 'can_convert' => ApplicantConversion::canConvert($a),
+            // Stage actions the pipeline offers: advance one step, reject (with a reason), or make an offer.
+            'next_stage' => ['applied' => 'screening', 'screening' => 'interview', 'rejected' => 'screening'][$a->stage] ?? null,
+            'can_reject' => ! in_array($a->stage, ['hired', 'rejected'], true),
+            'can_offer' => in_array($a->stage, Applicant::OFFERABLE_STAGES, true) && ! $a->employee_id,
         ];
     }
 
@@ -339,12 +416,15 @@ class RecruitmentController extends Controller
     {
         $data = $this->validateInterview($request);
         $applicant = Applicant::findOrFail($data['applicant_id']);
-        $interview = new Interview($data + ['status' => 'scheduled']);
+        abort_if(in_array($applicant->stage, ['hired', 'rejected'], true), 422, "{$applicant->name} is {$applicant->stage}; interviews can no longer be scheduled.");
+        $interview = new Interview(['status' => 'scheduled'] + $data);
+        $this->assertInterviewOutcomeAllowed($interview);
         $interview->company_id = $applicant->company_id;
         $interview->save();
         if (in_array($applicant->stage, ['applied', 'screening'], true)) {
             $applicant->update(['stage' => 'interview']);
         }
+        $this->syncInterviewOutcome($interview);
 
         return response()->json(['data' => $interview, 'message' => 'Interview scheduled.'], 201);
     }
@@ -352,9 +432,42 @@ class RecruitmentController extends Controller
     public function updateInterview(Request $request, int $id): JsonResponse
     {
         $interview = Interview::findOrFail($id);
-        $interview->update($this->validateInterview($request, true));
+        $interview->fill($this->validateInterview($request, true));
+        $this->assertInterviewOutcomeAllowed($interview);
+        $interview->save();
+        $this->syncInterviewOutcome($interview);
 
         return response()->json(['data' => $interview->fresh(), 'message' => 'Interview updated.']);
+    }
+
+    /** An interview can only be completed (or marked a no-show) once its scheduled date and time has passed. */
+    private function assertInterviewOutcomeAllowed(Interview $interview): void
+    {
+        if (in_array($interview->status, ['completed', 'no_show'], true) && $interview->scheduled_at?->isFuture()) {
+            throw ValidationException::withMessages(['status' => 'This interview is scheduled for '.$interview->scheduled_at->format('j M Y H:i').'; it cannot be '.($interview->status === 'completed' ? 'completed' : 'marked a no-show').' before then.']);
+        }
+    }
+
+    /**
+     * A completed interview moves an applicant still at applied / screening to the interview stage and stores the
+     * applicant's score as the average of their completed interview scores (shown in the Applicants list).
+     */
+    private function syncInterviewOutcome(Interview $interview): void
+    {
+        if ($interview->status !== 'completed' || ! ($applicant = Applicant::find($interview->applicant_id))) {
+            return;
+        }
+        $changes = [];
+        if (in_array($applicant->stage, ['applied', 'screening'], true)) {
+            $changes['stage'] = 'interview';
+        }
+        $avg = Interview::where('applicant_id', $applicant->id)->where('status', 'completed')->whereNotNull('score')->avg('score');
+        if ($avg !== null) {
+            $changes['score'] = (int) round($avg);
+        }
+        if ($changes) {
+            $applicant->update($changes);
+        }
     }
 
     public function destroyInterview(int $id): JsonResponse
@@ -388,7 +501,7 @@ class RecruitmentController extends Controller
             'id' => $o->id, 'applicant_id' => $o->applicant_id, 'applicant_name' => $o->applicant?->name,
             'position' => $o->applicant?->posting?->title, 'offered_salary' => (float) $o->offered_salary,
             'start_date' => $o->start_date?->toDateString(), 'expiry_date' => $o->expiry_date?->toDateString(),
-            'notes' => $o->notes, 'status' => $o->status === 'sent' && $o->expiry_date?->isPast() ? 'expired' : $o->status,
+            'notes' => $o->notes, 'status' => $o->effectiveStatus(),
             'sent_at' => $o->sent_at, 'responded_at' => $o->responded_at,
             'applicant_stage' => $o->applicant?->stage, 'employee_id' => $o->applicant?->employee_id,
             'can_convert' => $o->status === 'accepted' && $o->applicant && ! $o->applicant->employee_id,
@@ -399,18 +512,20 @@ class RecruitmentController extends Controller
     public function storeOffer(Request $request): JsonResponse
     {
         $data = $this->validateOffer($request);
-        $applicant = Applicant::findOrFail($data['applicant_id']);
-        // New offers start as drafts unless HR sends them straight away.
+        $applicant = Applicant::with('posting')->findOrFail($data['applicant_id']);
+        $this->assertCanOffer($applicant);
+        // Every offer starts as a draft; "Mark as sent to the candidate now" then runs the same Send transition.
+        $sendNow = ($data['status'] ?? 'draft') === 'sent';
+        unset($data['status']);
         $offer = new Offer(['status' => 'draft', 'created_by' => $request->user()->id] + $data);
-        if (! in_array($offer->status, ['draft', 'sent'], true)) {
-            $offer->status = 'draft';
-        }
-        $offer->sent_at = $offer->status === 'sent' ? now() : null;
         $offer->company_id = $applicant->company_id;
         $offer->save();
         $applicant->update(['stage' => 'offer']);
+        if ($sendNow) {
+            $this->transitionOffer($offer, 'sent', $request->user());
+        }
 
-        return response()->json(['data' => $offer, 'message' => 'Offer created.'], 201);
+        return response()->json(['data' => $offer->fresh(), 'message' => $sendNow ? 'Offer created and sent.' : 'Offer created.'], 201);
     }
 
     public function updateOffer(Request $request, int $id): JsonResponse
@@ -418,7 +533,7 @@ class RecruitmentController extends Controller
         $offer = Offer::findOrFail($id);
         $data = $this->validateOffer($request, true);
         $status = $data['status'] ?? null;
-        unset($data['status']);
+        unset($data['status'], $data['applicant_id']); // an offer stays with its applicant
         abort_if($data && ! in_array($offer->status, ['draft', 'sent'], true), 422, 'An offer that was accepted or declined cannot be edited.');
         $offer->update($data);
         if ($status && $status !== $offer->status) {
@@ -431,22 +546,28 @@ class RecruitmentController extends Controller
     /** POST /recruitment/offers/{id}/status {status} — draft → sent → accepted | declined (an expired offer may be re-sent). */
     public function offerStatus(Request $request, int $id): JsonResponse
     {
-        $offer = Offer::with('applicant')->findOrFail($id);
+        $offer = Offer::with('applicant.posting')->findOrFail($id);
         $data = $request->validate(['status' => ['required', Rule::in(['sent', 'accepted', 'declined'])]]);
-        $current = $offer->status === 'sent' && $offer->expiry_date?->isPast() ? 'expired' : $offer->status;
-        $allowed = ['draft' => ['sent'], 'sent' => ['accepted', 'declined'], 'expired' => ['sent', 'declined']][$current] ?? [];
-        abort_unless(in_array($data['status'], $allowed, true), 422, $current === 'expired' && $data['status'] === 'accepted'
-            ? 'This offer has expired. Extend the expiry date and re-send it first.'
-            : "A {$current} offer cannot be marked {$data['status']}.");
-        abort_if($data['status'] === 'sent' && $offer->expiry_date?->isPast(), 422, 'Set an expiry date in the future before sending the offer.');
-
-        $offer->forceFill(['status' => $data['status']] + ($data['status'] === 'sent' ? ['sent_at' => now()] : ['responded_at' => now()]))->save();
-        if ($data['status'] === 'accepted' && $offer->applicant) {
-            $offer->applicant->update(['stage' => 'hired', 'hired_at' => $offer->applicant->hired_at ?? now()]);
-        }
-        activity('recruitment')->performedOn($offer)->causedBy($request->user())->withProperties(['status' => $data['status']])->log("Offer {$data['status']}");
+        $this->transitionOffer($offer, $data['status'], $request->user());
 
         return response()->json(['data' => $offer->fresh(), 'message' => 'Offer marked '.$data['status'].'.']);
+    }
+
+    /** draft → sent → accepted | declined; an expired offer may be re-sent or declined. Accepting hires the applicant. */
+    private function transitionOffer(Offer $offer, string $status, User $user): void
+    {
+        $current = $offer->effectiveStatus();
+        $allowed = ['draft' => ['sent'], 'sent' => ['accepted', 'declined'], 'expired' => ['sent', 'declined']][$current] ?? [];
+        abort_unless(in_array($status, $allowed, true), 422, $current === 'expired' && $status === 'accepted'
+            ? 'This offer has expired. Extend the expiry date and re-send it first.'
+            : "A {$current} offer cannot be marked {$status}.");
+        abort_if($status === 'sent' && $offer->isExpired(), 422, 'Set an expiry date in the future before sending the offer.');
+
+        if ($status === 'accepted' && $offer->applicant) {
+            $this->hire($offer->applicant); // refuses when every vacancy is already filled
+        }
+        $offer->forceFill(['status' => $status] + ($status === 'sent' ? ['sent_at' => now()] : ['responded_at' => now()]))->save();
+        activity('recruitment')->performedOn($offer)->causedBy($user)->withProperties(['status' => $status])->log("Offer {$status}");
     }
 
     public function destroyOffer(int $id): JsonResponse

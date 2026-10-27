@@ -24,6 +24,14 @@ class Applicant extends RecruitmentModel
         return $this->belongsTo(Posting::class, 'posting_id')->withTrashed();
     }
 
+    /** Stages from which an offer can be made: the applicant has been interviewed (or already holds an offer). */
+    public const OFFERABLE_STAGES = ['interview', 'offer'];
+
+    public function offers(): HasMany
+    {
+        return $this->hasMany(Offer::class, 'applicant_id');
+    }
+
     public function interviews(): HasMany
     {
         return $this->hasMany(Interview::class, 'applicant_id');

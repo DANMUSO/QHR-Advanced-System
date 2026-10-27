@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { Plus, ArrowRight, Pencil, Trash2, X } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
 import { useUiStore } from '@/stores/ui';
@@ -24,7 +24,7 @@ const tabs = [
 
 const rows = ref([]);
 const pools = ref([]);
-const matrix9box = ref({ employees: [], cycles: [] });
+const matrix9box = ref({ employees: [], notRated: [], cycles: [] });
 const loading = ref(false);
 const modal = ref(false);
 const form = ref({});
@@ -34,6 +34,8 @@ const selectedCycle = ref('');
 const cycles = ref([]);
 
 const readinessColors = { ready_now: 'green', ready_1_2_years: 'blue', ready_3_5_years: 'yellow', not_ready: 'red' };
+const readinessLabels = { ready_now: 'Ready now', ready_1_2_years: 'Ready in 1–2 years', ready_3_5_years: 'Ready in 3–5 years', not_ready: 'Not ready' };
+const potentialLabels = { 1: 'Low', 2: 'Medium', 3: 'High' };
 const boxes = [
     { x: 3, y: 3, label: 'Star', color: 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700' },
     { x: 2, y: 3, label: 'High Potential', color: 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700' },
@@ -50,7 +52,7 @@ const successionCols = [
     { key: 'position_title', label: 'Critical Position', sortable: true },
     { key: 'incumbent_name', label: 'Incumbent' },
     { key: 'successor_name', label: 'Successor' },
-    { key: 'readiness', label: 'Readiness' },
+    { key: 'readiness', label: 'Readiness', format: (v) => readinessLabels[v] ?? v },
     { key: 'risk_level', label: 'Risk' },
 ];
 const careerCols = [
@@ -82,13 +84,13 @@ async function load() {
                 selectedCycle.value ? api.get('/succession/9box', { params: { cycle_id: selectedCycle.value } }) : Promise.resolve({ data: { data: [] } }),
             ]);
             cycles.value = cycRes.data.data ?? [];
-            matrix9box.value = { employees: empRes.data.data ?? [], cycles: cycles.value };
-            // Default to the most recent closed cycle (the one with final scores) so the grid is not blank.
+            matrix9box.value = { employees: empRes.data.data ?? [], notRated: empRes.data.potential_not_rated ?? [], cycles: cycles.value };
+            // Default to the active cycle (approved KPI results place people on the grid), else the latest one.
             if (!selectedCycle.value && cycles.value.length) {
-                const pick = cycles.value.find((c) => c.status === 'closed') ?? cycles.value[0];
+                const pick = cycles.value.find((c) => c.status === 'active') ?? cycles.value[0];
                 selectedCycle.value = pick.id;
                 const { data } = await api.get('/succession/9box', { params: { cycle_id: pick.id } });
-                matrix9box.value = { employees: data.data ?? [], cycles: cycles.value };
+                matrix9box.value = { employees: data.data ?? [], notRated: data.potential_not_rated ?? [], cycles: cycles.value };
             }
         }
     } catch (e) {
@@ -97,6 +99,20 @@ async function load() {
 }
 
 function switchTab(t) { tab.value = t; load(); }
+
+// Rate potential for the 9-box (people with a performance score but no potential rating).
+const rating = ref({ open: false, emp: null, potential: 2, note: '', saving: false });
+function openRate(emp) { rating.value = { open: true, emp, potential: emp.potential_box ?? 2, note: emp.potential_note ?? '', saving: false }; }
+async function saveRating() {
+    rating.value.saving = true;
+    try {
+        const { data } = await api.put('/succession/9box/potential', { cycle_id: selectedCycle.value, employee_id: rating.value.emp.id, potential: rating.value.potential, note: rating.value.note || null });
+        ui.toast(data.message ?? 'Saved.', 'success');
+        rating.value.open = false;
+        await load();
+    } catch (e) { ui.toast(errorMessage(e), 'error'); }
+    finally { rating.value.saving = false; }
+}
 
 const editing = ref(null);
 const memberPick = ref('');
@@ -119,6 +135,15 @@ function openEdit(row) {
     form.value = { ...row, members: [...(row.members ?? [])] };
     modal.value = true;
 }
+
+watch(() => form.value.position_id, async (id, old) => {
+    if (tab.value !== 'succession' || !modal.value || !id || id === old) return;
+    if (editing.value && form.value.incumbent_id && editing.value.position_id === Number(id)) return;
+    try {
+        const holders = (await api.get(`/succession/positions/${id}/holders`)).data.data ?? [];
+        form.value.incumbent_id = holders.length === 1 ? holders[0].id : (holders.some((h) => h.id === Number(form.value.incumbent_id)) ? form.value.incumbent_id : '');
+    } catch { /* leave the incumbent as chosen */ }
+});
 
 async function addMember(id) {
     if (!id || form.value.members.some((m) => m.id === Number(id))) { memberPick.value = ''; return; }
@@ -181,7 +206,7 @@ onMounted(load);
         <!-- Succession Plans -->
         <DataTable v-else-if="tab === 'succession'" :columns="successionCols" :rows="rows" :loading="false" export-name="succession">
             <template #cell-readiness="{ row }">
-                <Badge :color="readinessColors[row.readiness] ?? 'slate'">{{ row.readiness?.replace(/_/g, ' ') }}</Badge>
+                <Badge :color="readinessColors[row.readiness] ?? 'slate'">{{ readinessLabels[row.readiness] ?? row.readiness }}</Badge>
             </template>
             <template #cell-risk_level="{ row }">
                 <Badge :color="row.risk_level === 'high' ? 'red' : row.risk_level === 'medium' ? 'yellow' : 'green'">{{ row.risk_level }}</Badge>
@@ -238,9 +263,9 @@ onMounted(load);
                         <div v-for="box in boxes" :key="`${box.x}-${box.y}`" class="min-h-[120px] rounded-lg border p-3" :class="box.color">
                             <p class="mb-2 text-xs font-semibold text-slate-700 dark:text-slate-300">{{ box.label }}</p>
                             <div class="flex flex-wrap gap-1">
-                                <div v-for="emp in boxEmployees(box)" :key="emp.id" :title="emp.name">
+                                <button v-for="emp in boxEmployees(box)" :key="emp.id" type="button" :title="`${emp.name} · ${emp.score_source === 'appraisal' ? 'appraisal' : 'KPI'} score ${emp.final_score}% · potential ${potentialLabels[emp.potential_box]} (click to re-rate)`" @click="openRate(emp)">
                                     <Avatar :src="emp.photo_url" :name="emp.name" size="sm" />
-                                </div>
+                                </button>
                                 <p v-if="!boxEmployees(box).length" class="text-xs text-slate-400">—</p>
                             </div>
                         </div>
@@ -250,7 +275,35 @@ onMounted(load);
                     </div>
                 </div>
             </div>
+            <div class="card mt-6 p-5">
+                <h3 class="font-semibold text-slate-900 dark:text-white">Potential not rated</h3>
+                <p class="mb-3 text-sm text-slate-500">These employees have a performance score for the cycle (approved KPI results or appraisal) but no potential rating, so they are not on the grid yet.</p>
+                <p v-if="!matrix9box.notRated.length" class="text-sm text-slate-400">{{ matrix9box.employees.length ? 'Everyone with a score has been rated.' : 'No one has an approved KPI result or appraisal score in this cycle yet.' }}</p>
+                <div v-else class="divide-y divide-slate-100 dark:divide-slate-800">
+                    <div v-for="emp in matrix9box.notRated" :key="emp.id" class="flex items-center gap-3 py-2">
+                        <Avatar :src="emp.photo_url" :name="emp.name" size="sm" />
+                        <div class="min-w-0 flex-1"><p class="text-sm font-medium">{{ emp.name }}</p><p class="text-xs text-slate-500">{{ emp.position ?? '—' }} · {{ emp.score_source === 'appraisal' ? 'Appraisal' : 'KPI' }} score {{ emp.final_score }}%</p></div>
+                        <button class="btn-secondary !py-1.5 text-sm" @click="openRate(emp)">Rate potential</button>
+                    </div>
+                </div>
+            </div>
         </template>
+
+        <Modal :open="rating.open" :title="`Rate potential: ${rating.emp?.name ?? ''}`" size="sm" @close="rating.open = false">
+            <div class="space-y-4">
+                <div>
+                    <label class="label">Potential</label>
+                    <select v-model.number="rating.potential" class="input">
+                        <option v-for="(label, key) in potentialLabels" :key="key" :value="Number(key)">{{ label }}</option>
+                    </select>
+                </div>
+                <div><label class="label">Note</label><textarea v-model="rating.note" rows="3" class="input" /></div>
+            </div>
+            <template #footer>
+                <button class="btn-secondary" @click="rating.open = false">Cancel</button>
+                <button class="btn-primary" :disabled="rating.saving" @click="saveRating">{{ rating.saving ? 'Saving…' : 'Save' }}</button>
+            </template>
+        </Modal>
 
         <!-- Modal -->
         <Modal :open="modal" :title="(editing ? 'Edit ' : 'New ') + (tab === 'succession' ? 'Succession Plan' : tab === 'careers' ? 'Career Path' : 'Talent Pool')" @close="modal = false">
@@ -258,17 +311,14 @@ onMounted(load);
                 <template v-if="tab === 'succession'">
                     <div><label class="label">Critical position</label><LookupSelect v-model="form.position_id" kind="positions" placeholder="Choose a position" :error="!!errors?.position_id" /><p v-if="errors.position_id" class="mt-1 text-xs text-red-500">{{ errors.position_id }}</p></div>
                     <div class="grid gap-4 sm:grid-cols-2">
-                        <div><label class="label">Incumbent</label><LookupSelect v-model="form.incumbent_id" kind="employees" placeholder="Choose an employee" :error="!!errors?.incumbent_id" /></div>
+                        <div><label class="label">Incumbent</label><LookupSelect v-model="form.incumbent_id" kind="employees" placeholder="Choose an employee" :error="!!errors?.incumbent_id" /><p class="mt-1 text-xs text-slate-400">Filled from the position's current holder.</p></div>
                         <div><label class="label">Successor</label><LookupSelect v-model="form.successor_id" kind="employees" placeholder="Choose an employee" :error="!!errors?.successor_id" /><p v-if="errors.successor_id" class="mt-1 text-xs text-red-500">{{ errors.successor_id }}</p></div>
                     </div>
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div>
                             <label class="label">Readiness</label>
                             <select v-model="form.readiness" class="input">
-                                <option value="ready_now">Ready Now</option>
-                                <option value="ready_1_2_years">Ready in 1-2 Years</option>
-                                <option value="ready_3_5_years">Ready in 3-5 Years</option>
-                                <option value="not_ready">Not Ready</option>
+                                <option v-for="(label, key) in readinessLabels" :key="key" :value="key">{{ label }}</option>
                             </select>
                         </div>
                         <div>

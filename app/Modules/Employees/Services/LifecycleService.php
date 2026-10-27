@@ -3,6 +3,7 @@
 namespace App\Modules\Employees\Services;
 
 use App\Modules\Employees\Support\ApprovalRerouter;
+use App\Modules\Employees\Support\ResignationNotice;
 use App\Modules\Employees\Support\SideEffects;
 use App\Models\Branch;
 use App\Models\Department;
@@ -36,6 +37,14 @@ class LifecycleService
         if (ExitRecord::where('employee_id', $employee->id)->where('status', 'scheduled')->exists()) {
             throw ValidationException::withMessages(['employee_id' => "An exit is already scheduled for {$employee->full_name}."]);
         }
+        // A resignation runs its notice period unless HR explicitly waives (or shortens) it.
+        if (($data['reason'] ?? null) === 'resignation' && empty($data['waive_notice'])) {
+            $notice = $data['notice_date'] ?? ResignationRequest::withoutGlobalScope('company')->where('employee_id', $employee->id)
+                ->where('status', 'pending')->latest('id')->value('notice_date');
+            if ($notice && \Carbon\Carbon::parse($data['exit_date'])->lt(ResignationNotice::earliestLastDay($employee, $notice))) {
+                throw ValidationException::withMessages(['exit_date' => ResignationNotice::message($employee, $notice, self: false)]);
+            }
+        }
 
         return DB::transaction(function () use ($employee, $data, $by) {
             $exit = ExitRecord::create([
@@ -53,7 +62,7 @@ class LifecycleService
                 'processed_by' => $by?->id,
             ]);
             activity('employees')->performedOn($employee)->causedBy($by)
-                ->withProperties(['exit_date' => $exit->exit_date->toDateString(), 'reason' => $exit->reason])
+                ->withProperties(['exit_date' => $exit->exit_date->toDateString(), 'reason' => $exit->reason] + (empty($data['waive_notice']) ? [] : ['notice_waived' => true]))
                 ->log('Recorded exit');
 
             // The resignation is handled as soon as HR records the exit, even one scheduled for a later date.

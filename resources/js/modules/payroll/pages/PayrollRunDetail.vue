@@ -62,6 +62,7 @@ const columns = [
     { key: 'gross_pay', label: 'Gross', align: 'right', format: num },
     { key: 'paye', label: 'PAYE', align: 'right', format: num },
     { key: 'total_deductions', label: 'Deductions', align: 'right', format: num },
+    { key: 'reimbursements', label: 'Reimbursements', align: 'right', format: num },
     { key: 'net_pay', label: 'Net Pay', align: 'right', format: num },
 ];
 
@@ -196,8 +197,9 @@ async function openAdjustment(row = null) {
             components.value = (data.data ?? data).filter((c) => c.active && c.category !== 'employer_contribution');
         }
         if (!lookupEmployees.value.length) {
-            const { data } = await api.get('/lookups', { params: { only: 'employees' } });
-            lookupEmployees.value = data.employees ?? [];
+            // Everyone this run pays, including leavers whose exit falls in the period (notice pay, other one-offs).
+            const { data } = await api.get(`/payroll/runs/${route.params.id}/payable-employees`);
+            lookupEmployees.value = data.data ?? [];
         }
     } catch { /* dropdowns stay empty */ }
 }
@@ -480,7 +482,7 @@ onMounted(load);
                     <label class="label">Employee</label>
                     <select v-model="adjForm.employee_id" class="input">
                         <option value="">— Select employee —</option>
-                        <option v-for="e in lookupEmployees" :key="e.id" :value="e.id">{{ e.name }} ({{ e.employee_number }})</option>
+                        <option v-for="e in lookupEmployees" :key="e.id" :value="e.id">{{ e.name }} ({{ e.employee_number }}){{ e.exit_date ? ` · exit ` + e.exit_date : '' }}</option>
                     </select>
                     <p v-if="adjErrors.employee_id" class="field-error">{{ adjErrors.employee_id }}</p>
                 </div>

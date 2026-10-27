@@ -93,7 +93,7 @@ const actions = computed(() => {
     if (u.status === 'disabled') list.push({ key: 'enable', label: 'Enable account', icon: UserCheck, cls: 'btn-secondary' });
     else list.push({ key: 'disable', label: 'Disable account', icon: UserX, cls: 'btn-danger', confirm: `Disable ${u.name}? They will be signed out immediately.` });
     if (u.status === 'locked') list.push({ key: 'unlock', label: 'Unlock', icon: Unlock, cls: 'btn-secondary' });
-    if (u.status === 'not_activated') list.push({ key: 'resend-activation', label: 'Resend activation email', icon: MailQuestion, cls: 'btn-primary' });
+    if (u.status === 'not_activated' && payload.value?.can_resend_activation !== false) list.push({ key: 'resend-activation', label: 'Resend activation email', icon: MailQuestion, cls: 'btn-primary' });
     if (u.two_factor_enabled) list.push({ key: 'reset-two-factor', label: 'Reset 2FA', icon: ShieldAlert, cls: 'btn-secondary', confirm: `Reset two-factor authentication for ${u.name}?` });
     list.push(u.must_change_password
         ? { key: 'force-password-change', label: 'Clear forced password change', icon: KeyRound, cls: 'btn-secondary', body: { value: false } }
@@ -153,12 +153,16 @@ watch(() => route.params.id, (id) => { if (id) load(); }, { immediate: true });
                 <button v-if="payload.can_impersonate" class="btn-secondary" :disabled="busy === 'impersonate'" @click="impersonate">
                     <Spinner v-if="busy === 'impersonate'" /><LogIn v-else class="size-4" /> Sign in as
                 </button>
+                <button v-else-if="payload.impersonation_locked_reason" class="btn-secondary" disabled :title="payload.impersonation_locked_reason">
+                    <LogIn class="size-4" /> Sign in as
+                </button>
             </PageHeader>
 
             <div v-if="user.status === 'not_activated' && !user.is_self" class="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300">
                 <MailWarning class="size-5 shrink-0" />
                 <p class="flex-1"><strong>Not activated.</strong> {{ user.name }} cannot sign in until they open the activation email and set a password.</p>
-                <button class="btn-primary !py-1.5 text-xs" :disabled="!!busy" @click="runAction(actions.find((a) => a.key === 'resend-activation'))"><Spinner v-if="busy === 'resend-activation'" /> Resend activation email</button>
+                <button v-if="payload.can_resend_activation !== false" class="btn-primary !py-1.5 text-xs" :disabled="!!busy" @click="runAction(actions.find((a) => a.key === 'resend-activation'))"><Spinner v-if="busy === 'resend-activation'" /> Resend activation email</button>
+                <span v-else class="text-xs">{{ payload.activation_locked_reason }}</span>
                 <button v-if="payload.can_copy_activation_link" class="btn-secondary !py-1.5 text-xs" :disabled="!!busy" title="Local development only" @click="copyLink"><Spinner v-if="busy === 'activation-link'" /><Link2 v-else class="size-3.5" /> Copy activation link</button>
             </div>
 
@@ -239,11 +243,14 @@ watch(() => route.params.id, (id) => { if (id) load(); }, { immediate: true });
                             </div>
                         </div>
                         <p v-if="user.is_self" class="mb-3 text-sm text-amber-600 dark:text-amber-400">You cannot change your own roles.</p>
+                        <p v-else-if="payload.assignable_roles?.some((r) => r.locked)" class="mb-3 text-xs text-slate-500">Locked roles (finance, payroll, administrators) can only be granted or removed by a super admin, to keep duties separated.</p>
                         <div class="grid gap-2 sm:grid-cols-2">
                             <label v-for="r in payload.assignable_roles" :key="r.name"
                                 class="flex items-center gap-3 rounded-xl border p-3 text-sm transition"
-                                :class="[roles.includes(r.name) ? 'border-brand-300 bg-brand-50 dark:border-brand-700 dark:bg-brand-900/20' : 'border-slate-200 dark:border-slate-700', user.is_self ? 'cursor-not-allowed opacity-70' : 'cursor-pointer']">
-                                <input type="checkbox" class="rounded text-brand-600" :checked="roles.includes(r.name)" :disabled="user.is_self" @change="toggleRole(r.name)" />
+                                :title="r.locked ? r.locked_reason : ''"
+                                :class="[roles.includes(r.name) ? 'border-brand-300 bg-brand-50 dark:border-brand-700 dark:bg-brand-900/20' : 'border-slate-200 dark:border-slate-700', user.is_self || r.locked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer']">
+                                <input type="checkbox" class="rounded text-brand-600" :checked="roles.includes(r.name)" :disabled="user.is_self || r.locked" @change="toggleRole(r.name)" />
+                                <Lock v-if="r.locked" class="size-3.5 text-slate-400" />
                                 <span class="font-medium text-slate-800 dark:text-slate-200">{{ r.label }}</span>
                                 <code class="ml-auto text-xs text-slate-400">{{ r.name }}</code>
                             </label>

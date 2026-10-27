@@ -3,17 +3,18 @@ import { ref } from 'vue';
 import { Menu, Search, Sun, Moon, Monitor, Building2 } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { useUiStore } from '@/stores/ui';
+import { useRouter } from 'vue-router';
 import NotificationBell from './NotificationBell.vue';
 
 const auth = useAuthStore();
 const ui = useUiStore();
+const router = useRouter();
 
 const themeIcon = { light: Sun, dark: Moon, system: Monitor };
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 function changeCompany(e) {
-    ui.setCompanyScope(e.target.value);
-    window.location.reload();
+    ui.switchCompany(e.target.value, router);
 }
 </script>
 

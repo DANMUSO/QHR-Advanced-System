@@ -90,10 +90,10 @@ onMounted(load);
                             <td class="px-4 py-3 font-mono text-xs">{{ c.reference }}</td>
                             <td class="px-4 py-3 text-slate-500">{{ c.claim_date }}</td>
                             <td class="px-4 py-3">{{ c.provider_name }}</td>
-                            <td class="px-4 py-3 text-right font-medium">{{ c.total_amount?.toLocaleString() }}</td>
+                            <td class="px-4 py-3 text-right font-medium">{{ c.amount_summary ?? c.total_amount?.toLocaleString() }}</td>
                             <td class="px-4 py-3"><Badge :color="statusColors[c.status]">{{ c.status_label ?? c.status }}</Badge></td>
                             <td class="px-4 py-3">
-                                <span v-if="c.status === 'paid'" class="text-xs text-green-600 dark:text-green-400">Paid</span>
+                                <span v-if="c.status === 'paid'" class="text-xs text-green-600 dark:text-green-400">Paid {{ c.paid_amount?.toLocaleString() }}</span>
                                 <span v-else-if="c.status === 'finance_rejected'" class="text-xs text-red-500">Finance rejected</span>
                                 <span v-else-if="c.status === 'hr_approved'" class="text-xs text-blue-500">Awaiting payment</span>
                             </td>

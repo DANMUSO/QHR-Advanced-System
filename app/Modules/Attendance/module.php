@@ -53,6 +53,33 @@ return [
     'boot' => function () {
         app()->singleton(AttendanceService::class);
 
+        // Roster or calendar changes reopen finished days, so the next register read / payroll run re-marks absentees.
+        $reopen = function (?int $companyId, $from) {
+            if (! $from) {
+                return;
+            }
+            $from = CarbonImmutable::parse($from);
+            $ids = $companyId ? [$companyId] : \App\Models\Company::query()->pluck('id')->all();
+            foreach ($ids as $id) {
+                app(AttendanceService::class)->invalidateFinalised((int) $id, $from);
+            }
+        };
+        Employee::saved(function (Employee $e) use ($reopen) {
+            if ($e->wasRecentlyCreated || $e->wasChanged(['status', 'date_of_joining'])) {
+                $dates = array_filter([$e->date_of_joining, $e->getOriginal('date_of_joining')]);
+                $reopen($e->company_id, $dates ? min(array_map(fn ($d) => CarbonImmutable::parse($d)->toDateString(), $dates)) : today()->subDays(62));
+            }
+        });
+        if (class_exists(\App\Modules\Employees\Models\ExitRecord::class)) {
+            \App\Modules\Employees\Models\ExitRecord::saved(function ($x) use ($reopen) {
+                $dates = array_filter([$x->exit_date, $x->getOriginal('exit_date')]);
+                $reopen(Employee::withoutGlobalScope('company')->whereKey($x->employee_id)->value('company_id'),
+                    $dates ? min(array_map(fn ($d) => CarbonImmutable::parse($d)->toDateString(), $dates)) : null);
+            });
+        }
+        \App\Models\Holiday::saved(fn ($h) => $reopen($h->company_id, $h->recurring ? today()->subDays(62) : $h->date));
+        \App\Models\Holiday::deleted(fn ($h) => $reopen($h->company_id, $h->recurring ? today()->subDays(62) : $h->date));
+
         Employee::resolveRelationUsing('attendanceDays', fn ($e) => $e->hasMany(AttendanceDay::class));
         Employee::resolveRelationUsing('attendancePunches', fn ($e) => $e->hasMany(AttendancePunch::class));
         Employee::resolveRelationUsing('overtimes', fn ($e) => $e->hasMany(AttendanceOvertime::class, 'employee_id'));

@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Objective extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     protected $table = 'perf_objectives';
 
     protected $guarded = ['id'];

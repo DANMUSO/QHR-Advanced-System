@@ -69,7 +69,7 @@ const CONFIG = {
             { key: 'is_supervisor', label: 'Supervisory', format: (v) => (v ? 'Yes' : 'No') }, { key: 'employees_count', label: 'Staff', align: 'right', sortable: true },
         ],
         fields: [
-            { key: 'title', label: 'Position title', required: true, wide: true }, { key: 'employment_level_id', label: 'Employment level', type: 'level' },
+            { key: 'title', label: 'Position title', required: true, wide: true }, { key: 'employment_level_id', label: 'Employment level', type: 'level', required: true },
             { key: 'is_supervisor', label: 'Supervisory position', type: 'checkbox', hint: 'Staff in this position are treated as supervisors.' },
         ],
     },
@@ -173,7 +173,11 @@ async function save() {
             ? await api.put(`/organization/${tab.value}/${editor.id}`, payload, cfg())
             : await api.post(`/organization/${tab.value}`, payload, cfg());
         ui.toast(data.message);
+        const created = !editor.id;
         editor.open = false;
+        // Tab counters and the company profile figures follow the change straight away, then the server count.
+        if (created && typeof summary.value[tab.value] === 'number') summary.value = { ...summary.value, [tab.value]: summary.value[tab.value] + 1 };
+        profileKey.value++;
         load();
         loadSummary();
     } catch (e) {
@@ -310,7 +314,7 @@ onMounted(() => { loadSummary(); load(); });
                             <option v-for="e in employees" :key="e.id" :value="e.id">{{ e.name }}{{ e.employee_number ? ` (${e.employee_number})` : '' }}</option>
                         </select>
                         <select v-else-if="f.type === 'level'" v-model="editor.form[f.key]" class="input">
-                            <option :value="null">— None —</option>
+                            <option :value="f.required ? '' : null" :disabled="f.required">{{ f.required ? 'Choose a level…' : '— None —' }}</option>
                             <option v-for="l in levels" :key="l.id" :value="l.id">{{ l.name }}</option>
                         </select>
                         <input v-else v-model="editor.form[f.key]" :type="f.type || 'text'" :min="f.min" :max="f.max" :placeholder="f.placeholder" class="input" />

@@ -99,12 +99,15 @@ class ProbationController extends Controller
         abort_unless($probationReview->status === 'hr_review', 422, 'The review stages are not complete yet.');
         $employee = $probationReview->employee;
         abort_if($employee && $request->user()->employee?->id === $employee->id, 403, 'You cannot decide your own probation.');
+        abort_unless($employee && in_array($employee->status, ['active', 'suspended'], true), 422, 'This employee is no longer active.');
+        // An extension must move the end date later than it is now (and past today); an earlier date is not an extension.
+        $currentEnd = collect([$employee->probation_end_date, $probationReview->probation_end_date, today()])->filter()->max();
         $data = $request->validate([
             'decision' => ['required', Rule::in(['confirm', 'extend', 'terminate'])],
             'comment' => ['required', 'string', 'max:3000'],
-            'extension_end_date' => ['required_if:decision,extend', 'nullable', 'date', 'after:today'],
+            'extension_end_date' => ['required_if:decision,extend', 'nullable', 'date', 'after:'.$currentEnd->toDateString()],
             'exit_date' => ['nullable', 'date'],
-        ]);
+        ], ['extension_end_date.after' => 'The new end date must be after the current probation end date ('.$currentEnd->format('j M Y').'). Shortening a probation is not an extension.']);
         $decision = $data['decision'];
         $status = ['confirm' => 'confirmed', 'extend' => 'extended', 'terminate' => 'terminated'][$decision];
         $decidedOn = today()->toDateString();
@@ -182,12 +185,26 @@ class ProbationController extends Controller
             'status' => $r->status,
             'stage_index' => $r->stage_index,
             'current_stage' => ($step = $routing->currentStep($r)) ? ApprovalChain::label($step) : ($r->status === 'hr_review' ? 'HR decision' : null),
-            'stages' => collect($steps)->map(fn ($s, $i) => [
-                'label' => ApprovalChain::label($s),
-                'state' => $log->contains(fn ($l) => ($l['stage'] ?? null) === $i && ! empty($l['skipped'])) ? 'skipped'
-                    : ($i < $r->stage_index || ! in_array($r->status, ProbationRouting::OPEN, true) ? 'done' : ($i === $r->stage_index ? 'current' : 'waiting')),
-                'entry' => $log->last(fn ($l) => ($l['stage'] ?? null) === $i),
-            ])->values(),
+            // A stage's state follows its latest log entry, so a skipped stage that was reopened shows as current / done.
+            'stages' => collect($steps)->map(function ($s, $i) use ($r, $log) {
+                $entry = $log->last(fn ($l) => ($l['stage'] ?? null) === $i && empty($l['closed']));
+                $open = in_array($r->status, ProbationRouting::OPEN, true);
+
+                return [
+                    'label' => ApprovalChain::label($s),
+                    'state' => match (true) {
+                        $open && $i === $r->stage_index => 'current',
+                        ! empty($entry['skipped']) => 'skipped',
+                        isset($entry['comment']) => 'done',
+                        $r->status === ProbationRouting::CANCELLED => 'waiting',
+                        ! $open || $i < $r->stage_index => 'done',
+                        default => 'waiting',
+                    },
+                    'entry' => $entry,
+                ];
+            })->values(),
+            // Earliest date HR may extend to: the day after the later of the current end date and today.
+            'min_extension_date' => collect([$r->employee?->probation_end_date, $r->probation_end_date, today()])->filter()->max()->copy()->addDay()->toDateString(),
             'can_review' => $user ? $routing->canDecide($r, $user) : false,
             'can_decide' => $r->status === 'hr_review' && $user?->can('probation.manage') && $user->employee?->id !== $r->employee_id,
             'primary_approver_id' => $r->primary_approver_id,

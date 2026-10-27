@@ -71,6 +71,10 @@ class ExpensePaymentController extends Controller
             ->withProperties(['method' => $claim->payment_method, 'reference' => $claim->payment_reference, 'amount' => (float) $claim->amount])
             ->log($claim->status === 'paid' ? 'Expense claim paid' : 'Expense claim queued for payroll');
         $this->workflow->notifyEmployee($claim, $claim->status);
+        if ($claim->status === 'payroll_pending' && class_exists(\App\Modules\Payroll\Services\PayrollRunService::class)) {
+            // An already-calculated run must be recalculated to include the reimbursement.
+            \App\Modules\Payroll\Services\PayrollRunService::inputsChanged((int) $claim->company_id, [(int) $claim->employee_id]);
+        }
 
         return response()->json([
             'data' => ExpenseController::presentExpense($claim->fresh('employee'), true),

@@ -5,6 +5,7 @@ namespace App\Modules\Employees\Services;
 use App\Models\Benefit;
 use App\Models\Company;
 use App\Models\Employee;
+use App\Models\EmployeeNextOfKin;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
@@ -154,7 +155,14 @@ class EmployeeService
         $this->applyProbation($to, true);
         $to->save();
 
-        foreach ($from->nextOfKin()->get() as $row) {
+        // Next of kin come from the latest earlier period that has one (an imported record may have had none).
+        $kin = collect();
+        for ($source = $from, $seen = []; $source && $kin->isEmpty() && ! in_array($source->id, $seen, true); $source = $source->previous_employee_id
+            ? Employee::withoutGlobalScopes()->find($source->previous_employee_id) : null) {
+            $seen[] = $source->id;
+            $kin = EmployeeNextOfKin::where('employee_id', $source->id)->get();
+        }
+        foreach ($kin as $row) {
             $to->nextOfKin()->create(Arr::only($row->getAttributes(), self::NOK_FIELDS));
         }
         foreach ($from->dependants()->get() as $row) {
@@ -240,6 +248,10 @@ class EmployeeService
             if ($employee->{$field}) {
                 $employee->{$field} = strip_tags(trim($employee->{$field}));
             }
+        }
+        // A position carries its employment level; use it when no level was picked.
+        if (! $employee->employment_level_id && $employee->position_id) {
+            $employee->employment_level_id = \App\Models\Position::withoutGlobalScope('company')->whereKey($employee->position_id)->value('employment_level_id');
         }
         // Default probation_months from the employment level when not explicitly set.
         if (! $employee->probation_months && $employee->employment_level_id) {

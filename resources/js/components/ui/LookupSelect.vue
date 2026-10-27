@@ -101,12 +101,17 @@ function onKey(e) {
     if (e.key === 'ArrowDown') { e.preventDefault(); active.value = Math.min(active.value + 1, filtered.value.length - 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); active.value = Math.max(active.value - 1, 0); }
     else if (e.key === 'Enter') { e.preventDefault(); if (filtered.value[active.value]) choose(filtered.value[active.value]); }
-    else if (e.key === 'Escape') { open.value = false; }
+    else if (e.key === 'Escape') {
+        // Close only this dropdown: the surrounding modal must not close and lose the form.
+        e.preventDefault();
+        e.stopPropagation();
+        open.value = false;
+    }
 }
 </script>
 
 <template>
-    <div ref="root" class="relative">
+    <div ref="root" class="relative" @keydown.esc="open && onKey($event)">
         <button
             :id="id"
             type="button"

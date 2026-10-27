@@ -179,9 +179,11 @@ class ClaimsBenefitsWorkflowTest extends TestCase
         $staff = $this->person('employee', $supervisor->employee);
         $finance = $this->person('finance');
 
-        $id = $this->actingAs($staff)->postJson('/api/expenses', [
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $id = $this->actingAs($staff)->post('/api/expenses', [
             'description' => 'Taxi to client', 'category' => 'transport', 'amount' => 1200, 'expense_date' => now()->toDateString(),
-        ])->assertCreated()->json('data.id');
+            'receipt' => \Illuminate\Http\UploadedFile::fake()->create('taxi.pdf', 50, 'application/pdf'), // required by default (QA round 5)
+        ], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
         Notification::assertSentTo($supervisor, ExpenseNotification::class, fn ($n) => $n->event === 'submitted');
 
         $this->actingAs($supervisor)->postJson("/api/expenses/{$id}/reject", [])->assertUnprocessable(); // reason required

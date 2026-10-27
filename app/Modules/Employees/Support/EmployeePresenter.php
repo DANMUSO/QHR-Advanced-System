@@ -192,7 +192,7 @@ class EmployeePresenter
         return [
             'branches'    => $scope(\App\Models\Branch::query())->orderBy('name')->get(['id', 'name']),
             'departments' => $scope(\App\Models\Department::query())->orderBy('name')->get(['id', 'name']),
-            'positions'   => $scope(\App\Models\Position::query())->orderBy('title')->get(['id', 'title', 'is_supervisor']),
+            'positions'   => $scope(\App\Models\Position::query())->orderBy('title')->get(['id', 'title', 'is_supervisor', 'employment_level_id']),
             'levels'      => $scope(\App\Models\EmploymentLevel::query())->orderBy('name')->get(['id', 'name', 'probation_months']),
             'benefits'    => $scope(\App\Models\Benefit::query())->orderBy('name')->get(['id', 'name']),
             'supervisors' => $scope(Employee::query())->active()

@@ -3,6 +3,7 @@
 use App\Modules\Compliance\Http\Controllers\ComplianceController;
 use App\Modules\Compliance\Http\Controllers\ExitClearanceController;
 use App\Modules\Compliance\Http\Controllers\MyGrievanceController;
+use App\Modules\Compliance\Http\Controllers\MySafetyPrivacyController;
 use App\Modules\Employees\Http\Controllers\KycController;
 use Illuminate\Support\Facades\Route;
 
@@ -35,3 +36,9 @@ Route::prefix('compliance')->group(function () {
 // Employee self-service grievances (any signed-in employee; scoped to the caller in the controller).
 Route::get('my/grievances', [MyGrievanceController::class, 'index']);
 Route::post('my/grievances', [MyGrievanceController::class, 'store']);
+
+// Employee self-service health & safety reports and data-protection requests (scoped to the caller in the controller).
+Route::get('my/health-safety', [MySafetyPrivacyController::class, 'safety']);
+Route::post('my/health-safety', [MySafetyPrivacyController::class, 'reportSafety']);
+Route::get('my/data-requests', [MySafetyPrivacyController::class, 'dataRequests']);
+Route::post('my/data-requests', [MySafetyPrivacyController::class, 'storeDataRequest']);

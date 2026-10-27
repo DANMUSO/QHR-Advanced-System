@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Storage;
 
 class Company extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     use HasFactory, SoftDeletes;
 
     /** Defaults for per-company rules that the legacy system hard-coded by company id. */

@@ -11,6 +11,8 @@ use Illuminate\Support\Collection;
 /** Public / company holidays. A null company_id means the holiday applies to every company. */
 class Holiday extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     protected $guarded = ['id'];
 
     protected function casts(): array

@@ -52,7 +52,8 @@ export const useAuthStore = defineStore('auth', {
         },
 
         _autoSelectCompany() {
-            if (this.isSuperAdmin && !localStorage.getItem('companyScope') && this.user?.companies?.length) {
+            // "All companies" chosen explicitly is kept; only a first sign-in defaults to the first company.
+            if (this.isSuperAdmin && !localStorage.getItem('companyScope') && !localStorage.getItem('companyScopeAll') && this.user?.companies?.length) {
                 useUiStore().setCompanyScope(String(this.user.companies[0].id));
             }
         },
@@ -75,6 +76,7 @@ export const useAuthStore = defineStore('auth', {
             } finally {
                 this.user = null;
                 localStorage.removeItem('companyScope');
+                localStorage.removeItem('companyScopeAll');
             }
         },
 

@@ -56,6 +56,7 @@ class EmployeeLifecycleController extends Controller
             'exit_date' => ['required_without:last_working_day', 'nullable', 'date'],
             'last_working_day' => ['nullable', 'date'],
             'notice_date' => ['nullable', 'date'],
+            'waive_notice' => ['nullable', 'boolean'],
             'reason' => ['required_without:exit_reason', 'nullable', Rule::in(array_keys(EmployeeExit::REASONS))],
             'exit_reason' => ['nullable', Rule::in(array_keys(EmployeeExit::REASONS))],
             'comments' => ['nullable', 'string', 'max:3000'],
@@ -76,6 +77,7 @@ class EmployeeLifecycleController extends Controller
         $exit = $this->lifecycle->recordExit($e, [
             'exit_date' => $exitDate,
             'notice_date' => $data['notice_date'] ?? null,
+            'waive_notice' => (bool) ($data['waive_notice'] ?? false),
             'reason' => $data['reason'] ?? $data['exit_reason'],
             'comments' => $data['comments'] ?? $data['notes'] ?? null,
             'new_supervisor_id' => $data['new_supervisor_id'] ?? null,

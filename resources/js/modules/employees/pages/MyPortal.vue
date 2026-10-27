@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { Plus, X, Check } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
 import { label } from '@/lib/format';
+import { openServerFile } from '@/lib/export';
 import swal from '@/lib/swal';
 import { useAuthStore } from '@/stores/auth';
 import Avatar from '@/components/ui/Avatar.vue';
@@ -22,6 +23,7 @@ import PortalTraining from '../components/portal/PortalTraining.vue';
 import PortalDocuments from '../components/portal/PortalDocuments.vue';
 import PortalRequests from '../components/portal/PortalRequests.vue';
 import PortalGrievances from '../components/portal/PortalGrievances.vue';
+import PortalSafetyPrivacy from '../components/portal/PortalSafetyPrivacy.vue';
 import PortalRecognition from '../components/portal/PortalRecognition.vue';
 import PortalSuggestions from '../components/portal/PortalSuggestions.vue';
 
@@ -43,6 +45,7 @@ const tabs = [
     { key: 'requests',    label: 'Requests' },
     { key: 'recognition', label: 'Recognition' },
     { key: 'grievances',  label: 'Grievances' },
+    { key: 'safety',      label: 'Safety & My Data' },
     { key: 'suggestions', label: 'Suggestion Box' },
 ];
 // Deep links (notifications) open a tab: /portal?tab=requests
@@ -118,13 +121,22 @@ async function loadExpenses() {
         const { data } = await api.get(expenseEndpoints[expenseTab.value]);
         expenses.value = data.data ?? data;
         if (data.categories?.length) EXPENSE_CATEGORIES.value = data.categories;
+        if (data.receipt_threshold !== undefined) receiptThreshold.value = Number(data.receipt_threshold) || 0;
     }
     finally { expensesLoading.value = false; }
 }
 function switchExpenseTab(t) { expenseTab.value = t; loadExpenses(); }
+// Expenses above this amount need a receipt (company setting; 0 = always). Sent by GET /expenses.
+const receiptThreshold = ref(0);
 async function saveExpense() {
     expenseSaving.value = true; expenseErrors.value = {};
-    try { await api.post(expenseEndpoints[expenseTab.value], expenseForm.value); swal.toast('Submitted.'); expenseModal.value = false; await loadExpenses(); }
+    // Expense claims carry a receipt file, so they go as multipart form data.
+    let payload = expenseForm.value;
+    if (expenseTab.value === 'expenses') {
+        payload = new FormData();
+        Object.entries(expenseForm.value).forEach(([k, v]) => { if (v !== null && v !== undefined && v !== '') payload.append(k, v); });
+    }
+    try { await api.post(expenseEndpoints[expenseTab.value], payload); swal.toast('Submitted.'); expenseModal.value = false; await loadExpenses(); }
     catch (e) { expenseErrors.value = fieldErrors(e); swal.toast(errorMessage(e), 'error'); } finally { expenseSaving.value = false; }
 }
 
@@ -203,7 +215,7 @@ onMounted(() => { if (hasEmployee) loaders[tab.value]?.(); });
                         <div v-for="b in balances" :key="b.leave_type_id" class="card p-4">
                             <div class="mb-1 flex items-center gap-2"><span class="size-2.5 rounded-full" :style="{ background: b.color }" /><span class="text-xs font-medium text-slate-500">{{ b.name }}</span></div>
                             <p class="text-2xl font-bold text-slate-900 dark:text-white">{{ b.projected ?? '∞' }}</p>
-                            <p class="text-xs text-slate-400">{{ b.taken }} taken · {{ b.pending }} pending</p>
+                            <p class="text-xs text-slate-400">{{ b.taken }} taken<template v-if="b.booked"> · {{ b.booked }} booked</template> · {{ b.pending }} pending</p>
                         </div>
                     </div>
                     <div class="mb-4 flex items-center gap-3">
@@ -305,7 +317,7 @@ onMounted(() => { if (hasEmployee) loaders[tab.value]?.(); });
                     </thead>
                     <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
                         <tr v-for="e in expenses" :key="e.id" class="hover:bg-slate-50/70 dark:hover:bg-slate-800/30">
-                            <td class="px-4 py-3 font-medium">{{ e.description ?? e.destination }}</td>
+                            <td class="px-4 py-3 font-medium">{{ e.description ?? e.destination }}<button v-if="e.receipt_url" type="button" class="ml-2 text-xs font-normal text-brand-600 hover:underline dark:text-brand-400" @click="openServerFile(e.receipt_url + '?inline=1')">Receipt</button></td>
                             <td class="px-4 py-3 text-slate-500">{{ e.expense_date ?? e.departure_date }}</td>
                             <td class="px-4 py-3 text-right">{{ (e.amount ?? e.estimated_cost)?.toLocaleString() }}</td>
                             <td class="px-4 py-3"><Badge :color="expenseStatusColors[e.status] ?? 'slate'">{{ e.status }}</Badge></td>
@@ -330,7 +342,7 @@ onMounted(() => { if (hasEmployee) loaders[tab.value]?.(); });
                             <td class="px-4 py-3 font-medium">{{ c.reference }}</td>
                             <td class="px-4 py-3 text-slate-500">{{ c.provider_name }}</td>
                             <td class="px-4 py-3 text-slate-500">{{ c.claim_date }}</td>
-                            <td class="px-4 py-3 text-right">{{ c.total_amount?.toLocaleString() }}</td>
+                            <td class="px-4 py-3 text-right">{{ c.amount_summary ?? c.total_amount?.toLocaleString() }}</td>
                             <td class="px-4 py-3"><Badge :color="claimStatusColors[c.status] ?? 'slate'">{{ c.status }}</Badge></td>
                         </tr>
                         <tr v-if="!claims.length"><td colspan="5" class="px-4 py-10 text-center text-slate-400">No claims submitted yet.</td></tr>
@@ -343,6 +355,7 @@ onMounted(() => { if (hasEmployee) loaders[tab.value]?.(); });
         <PortalRequests v-else-if="tab === 'requests'" />
         <PortalRecognition v-else-if="tab === 'recognition'" />
         <PortalGrievances v-else-if="tab === 'grievances'" />
+        <PortalSafetyPrivacy v-else-if="tab === 'safety'" />
         <PortalSuggestions v-else-if="tab === 'suggestions'" />
 
         <!-- ── MODALS ── -->
@@ -363,6 +376,11 @@ onMounted(() => { if (hasEmployee) loaders[tab.value]?.(); });
                         <div><label class="label">Amount (KES)</label><input v-model="expenseForm.amount" type="number" class="input" /><p v-if="expenseErrors.amount" class="field-error">{{ expenseErrors.amount }}</p></div>
                     </div>
                     <div><label class="label">Date</label><input v-model="expenseForm.expense_date" type="date" class="input" /><p v-if="expenseErrors.expense_date" class="field-error">{{ expenseErrors.expense_date }}</p></div>
+                    <div>
+                        <label class="label" for="expense-receipt">Receipt <span class="font-normal text-slate-400">({{ receiptThreshold > 0 ? `required above KES ${receiptThreshold.toLocaleString()}` : 'required' }} · PDF, JPG or PNG, max 5 MB)</span></label>
+                        <input id="expense-receipt" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" class="input" @change="expenseForm.receipt = $event.target.files[0] ?? null" />
+                        <p v-if="expenseErrors.receipt" class="field-error">{{ expenseErrors.receipt }}</p>
+                    </div>
                 </template>
                 <template v-else>
                     <div><label class="label">Destination</label><input v-model="expenseForm.destination" type="text" class="input" /><p v-if="expenseErrors.destination" class="field-error">{{ expenseErrors.destination }}</p></div>

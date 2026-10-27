@@ -12,12 +12,13 @@ class SettingsSchema
         'overtime_multiplier_holiday' => 2.0,
         'pay_day' => 28,
         'late_grace_minutes' => 0,
+        'resignation_notice_days' => 30,
         'hr_contact_name' => null,
         'hr_contact_email' => null,
         'hr_contact_phone' => null,
     ];
 
-    public const INTEGERS = ['annual_leave_days', 'idle_timeout_minutes', 'pay_day', 'late_grace_minutes'];
+    public const INTEGERS = ['annual_leave_days', 'idle_timeout_minutes', 'pay_day', 'late_grace_minutes', 'resignation_notice_days'];
 
     public const FLOATS = [
         'hours_per_day', 'monthly_accrual', 'carry_forward_cap', 'medical_annual_limit', 'medical_monthly_limit',
@@ -59,6 +60,7 @@ class SettingsSchema
             'overtime_multiplier_holiday' => ['required', 'numeric', 'min:1', 'max:5'],
             'pay_day' => ['required', 'integer', 'min:1', 'max:31'],
             'late_grace_minutes' => ['required', 'integer', 'min:0', 'max:240'],
+            'resignation_notice_days' => ['sometimes', 'integer', 'min:0', 'max:365'],
             'hr_contact_name' => ['nullable', 'string', 'max:120'],
             'hr_contact_email' => ['nullable', 'email', 'max:190'],
             'hr_contact_phone' => ['nullable', 'string', 'max:30', 'regex:'.\App\Modules\Employees\Support\EmployeeRules::PHONE_REGEX],

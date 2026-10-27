@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class FocusArea extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     protected $table = 'perf_focus_areas';
 
     protected $guarded = ['id'];

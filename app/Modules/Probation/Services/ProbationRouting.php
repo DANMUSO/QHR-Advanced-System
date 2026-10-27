@@ -25,7 +25,13 @@ class ProbationRouting
     /** Reviewer stages still open (HR has not been reached yet). */
     public const OPEN = ['pending', 'in_review'];
 
-    public const FINAL = ['confirmed', 'extended', 'terminated'];
+    /** Closed without a decision (the employee left or moved on before the review finished). */
+    public const CANCELLED = 'cancelled';
+
+    public const FINAL = ['confirmed', 'extended', 'terminated', self::CANCELLED];
+
+    /** Still waiting on someone: a reviewer stage or the HR decision. */
+    public const UNDECIDED = ['pending', 'in_review', 'hr_review'];
 
     public const BUILT_IN = [
         ['type' => 'supervisor', 'label' => 'Primary supervisor review'],
@@ -120,6 +126,10 @@ class ProbationRouting
 
         while (true) {
             $step = $steps[$review->stage_index] ?? null;
+            if ($step && self::stageDone($log, (int) $review->stage_index)) {
+                $review->stage_index++; // already commented on (a reopened earlier stage was just completed)
+                continue;
+            }
             if (! $step) {
                 $review->status = 'hr_review';
                 $review->primary_approver_id = null;
@@ -146,6 +156,63 @@ class ProbationRouting
         }
 
         return $changed;
+    }
+
+    /** Whether the stage's latest log entry is a submitted comment (not a skip). */
+    private static function stageDone(array $log, int $index): bool
+    {
+        $last = collect($log)->where('stage', $index)->last();
+
+        return $last && ! ($last['skipped'] ?? false) && ! ($last['reopened'] ?? false);
+    }
+
+    /**
+     * A stage skipped because nobody could act (e.g. the supervisor had no login yet) is reopened as soon as someone
+     * can: the earliest such stage becomes current again and the stages already commented on are not asked twice.
+     * Works for reviews still at a reviewer stage or already waiting for HR. Returns true when a stage was reopened.
+     */
+    public function reopenSkipped(ProbationReview $review, bool $notify = true): bool
+    {
+        if (! in_array($review->status, self::UNDECIDED, true)) {
+            return false;
+        }
+        $log = (array) ($review->stage_log ?? []);
+        $skipped = collect($log)->filter(fn ($e) => $e['skipped'] ?? false)->pluck('stage')->unique()->sort()
+            ->filter(fn ($i) => $i < $review->stage_index || $review->status === 'hr_review')
+            ->filter(fn ($i) => (collect($log)->where('stage', $i)->last()['skipped'] ?? false));
+
+        foreach ($skipped as $index) {
+            $probe = (clone $review)->forceFill(['stage_index' => (int) $index, 'status' => 'in_review']);
+            if ($this->recipients($probe)->isEmpty()) {
+                continue;
+            }
+            $label = ApprovalChain::label(self::steps($review)[$index] ?? []);
+            $log[] = ['stage' => (int) $index, 'label' => $label, 'reopened' => true, 'note' => 'Reopened: a reviewer can now act on this stage', 'at' => now()->toIso8601String()];
+            $review->forceFill(['stage_index' => (int) $index, 'status' => 'in_review', 'stage_log' => $log]);
+            activity('probation')->performedOn($review)->withProperties(['employee_id' => $review->employee_id, 'stage' => $label])
+                ->log("Probation stage reopened: {$label}");
+            $this->advance($review, $notify);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /** Closes the employee's undecided reviews (exit, transfer) so they leave every queue. Returns how many. */
+    public function closeForEmployee(int $employeeId, string $reason): int
+    {
+        $reviews = ProbationReview::withoutGlobalScopes()->where('employee_id', $employeeId)->whereIn('status', self::UNDECIDED)->get();
+        foreach ($reviews as $review) {
+            $log = (array) ($review->stage_log ?? []);
+            $log[] = ['stage' => (int) $review->stage_index, 'label' => 'Closed', 'closed' => true, 'note' => "Closed: {$reason}", 'at' => now()->toIso8601String()];
+            $review->forceFill(['status' => self::CANCELLED, 'primary_approver_id' => null, 'stage_log' => $log,
+                'hr_comment' => $review->hr_comment ?: "Closed: {$reason}"])->save();
+            activity('probation')->performedOn($review)->withProperties(['employee_id' => $employeeId, 'reason' => $reason])
+                ->log("Probation review closed: {$reason}");
+        }
+
+        return $reviews->count();
     }
 
     /** Re-routing (approvals:reroute / exits): re-resolve the current stage's approver. */

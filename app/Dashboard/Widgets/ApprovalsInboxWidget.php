@@ -43,16 +43,14 @@ class ApprovalsInboxWidget extends Widget
     {
         $providers = $this->providers();
 
-        $items = $providers->flatMap(fn (ApprovalProvider $p) => $this->safely(fn () => $p->pendingFor($user, 10), []))
-            ->sortBy('requested_at')->values();
-
-        $byType = $providers->flatMap(fn (ApprovalProvider $p) => collect($this->safely(fn () => $p->pendingFor($user, 1000), []))->pluck('type'))
-            ->countBy()->all();
+        // One listing per provider feeds both the type breakdown and the ten oldest items (providers can be
+        // expensive: listing twice doubled the dashboard's query count).
+        $all = $providers->flatMap(fn (ApprovalProvider $p) => $this->safely(fn () => $p->pendingFor($user, 1000), []));
 
         return [
             'total' => $providers->sum(fn (ApprovalProvider $p) => $this->safely(fn () => $p->countFor($user), 0)),
-            'by_type' => $byType,
-            'items' => $items->take(10)->all(),
+            'by_type' => $all->pluck('type')->countBy()->all(),
+            'items' => $all->sortBy('requested_at')->take(10)->values()->all(),
         ];
     }
 

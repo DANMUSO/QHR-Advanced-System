@@ -86,9 +86,10 @@ class PayrollReportService
                 $this->col('nssf_employee', 'NSSF', true), $this->col('shif', 'SHIF', true), $this->col('ahl_employee', 'Housing levy', true),
                 $this->col('pension_employee', 'Pension', true), $this->col('taxable_pay', 'Taxable pay', true), $this->col('paye', 'PAYE', true),
                 $this->col('helb', 'HELB', true), $this->col('other_deductions', 'Other deductions', true),
-                $this->col('total_deductions', 'Total deductions', true), $this->col('net_pay', 'Net pay', true),
+                $this->col('total_deductions', 'Total deductions', true), $this->col('reimbursements', 'Reimbursements', true),
+                $this->col('net_pay', 'Net pay', true),
             ], $lines->map(fn ($l) => $this->emp($l) + $l->only(['basic_salary', 'basic_pay', 'gross_pay', 'nssf_employee', 'shif', 'ahl_employee',
-                'pension_employee', 'taxable_pay', 'paye', 'helb', 'other_deductions', 'total_deductions', 'net_pay']))),
+                'pension_employee', 'taxable_pay', 'paye', 'helb', 'other_deductions', 'total_deductions', 'reimbursements', 'net_pay']))),
         };
     }
 
@@ -99,13 +100,14 @@ class PayrollReportService
                 'group' => $name, 'headcount' => $g->count(),
                 'gross_pay' => round($g->sum('gross_pay'), 2), 'paye' => round($g->sum('paye'), 2),
                 'statutory' => round($g->sum(fn ($l) => $l->nssf_employee + $l->shif + $l->ahl_employee), 2),
+                'reimbursements' => round($g->sum('reimbursements'), 2),
                 'net_pay' => round($g->sum('net_pay'), 2), 'employer_cost' => round($g->sum('employer_cost'), 2),
             ])->sortBy('group')->values();
 
         return $this->table('Summary by '.$by, $this->slug($run, 'summary-by-'.$by), [
             $this->col('group', ucfirst($by)), $this->col('headcount', 'Headcount'), $this->col('gross_pay', 'Gross pay', true),
-            $this->col('paye', 'PAYE', true), $this->col('statutory', 'NSSF + SHIF + AHL', true), $this->col('net_pay', 'Net pay', true),
-            $this->col('employer_cost', 'Employer cost', true),
+            $this->col('paye', 'PAYE', true), $this->col('statutory', 'NSSF + SHIF + AHL', true), $this->col('reimbursements', 'Reimbursements', true),
+            $this->col('net_pay', 'Net pay', true), $this->col('employer_cost', 'Employer cost', true),
         ], $rows);
     }
 

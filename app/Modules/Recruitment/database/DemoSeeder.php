@@ -53,9 +53,14 @@ class DemoSeeder extends Seeder
             $n = 1;
             foreach ($positions->random(min(5, $positions->count())) as $i => $position) {
                 $status = ['approved', 'approved', 'approved', 'pending_approval', 'filled'][$i % 5];
+                // Positions carry no department: use the department where that position's staff work.
+                $deptId = $staff->where('position_id', $position->id)->countBy('department_id')->sortDesc()->keys()->first() ?? $departments->random()->id;
+                $vacancies = rand(1, 3);
+                // Hires never exceed vacancies: a filled requisition has all of them hired, an open one fewer.
+                $hiresLeft = $status === 'filled' ? $vacancies : $vacancies - 1;
                 $req = new Requisition([
-                    'position_id' => $position->id, 'department_id' => $departments->random()->id,
-                    'vacancies' => rand(1, 3), 'type' => $faker->randomElement(['permanent', 'permanent', 'fixed_term', 'internship']),
+                    'position_id' => $position->id, 'department_id' => $deptId,
+                    'vacancies' => $vacancies, 'type' => $faker->randomElement(['permanent', 'permanent', 'fixed_term', 'internship']),
                     'justification' => $faker->randomElement(['Replacement for a resigned staff member.', 'Business growth in the region.', 'New product line launch.', 'Workload increase after branch expansion.']),
                     'status' => $status, 'approved_at' => $status !== 'pending_approval' ? now()->subDays(rand(20, 60)) : null,
                 ]);
@@ -81,6 +86,12 @@ class DemoSeeder extends Seeder
                     $first = $faker->firstName();
                     $last = $faker->randomElement($surnames);
                     $stage = $faker->randomElement(['applied', 'applied', 'screening', 'screening', 'interview', 'interview', 'offer', 'rejected', 'rejected', 'hired']);
+                    if ($status === 'filled' && $a < $vacancies) {
+                        $stage = 'hired';
+                    }
+                    if ($stage === 'hired' && $hiresLeft-- <= 0) {
+                        $stage = 'rejected';
+                    }
                     $applied = now()->subDays(rand(5, 45));
                     $applicant = new Applicant([
                         'posting_id' => $posting->id, 'name' => "$first $last", 'email' => strtolower("$first.$last".rand(1, 99).'@gmail.com'),

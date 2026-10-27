@@ -39,9 +39,33 @@ class ApprovalController extends Controller
             });
     }
 
+    /**
+     * Who may open the approvals page: claims.approve holders, plus anyone a claim has been routed to
+     * (supervisor / escalated approver) or who has decided one before (their "decided" history).
+     */
+    public static function canAccess(User $user): bool
+    {
+        if ($user->can('claims.approve')) {
+            return true;
+        }
+        $employeeId = $user->employee?->id;
+
+        return MedicalClaim::withoutGlobalScopes()
+            ->where(fn ($q) => $q->where('hr_decided_by', $user->id)
+                ->when($employeeId, fn ($w) => $w->orWhere('routed_to_employee_id', $employeeId)))
+            ->exists();
+    }
+
+    /** Front-end flag for the route guard and navigation. */
+    public function access(Request $request): JsonResponse
+    {
+        return response()->json(['allowed' => static::canAccess($request->user())]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
+        abort_unless(static::canAccess($user), 403, 'You have no claims to approve.');
         $scope = $request->query('scope', 'mine');
 
         $query = match ($scope) {

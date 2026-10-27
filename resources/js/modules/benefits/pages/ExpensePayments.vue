@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { CreditCard } from 'lucide-vue-next';
+import { openServerFile } from '@/lib/export';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
 import { useUiStore } from '@/stores/ui';
 import { formatDate, formatMoney, titleCase } from '@/lib/format';
@@ -94,6 +95,10 @@ onMounted(load);
         <Tabs :tabs="tabs" :model-value="tab" @update:model-value="switchTab" />
 
         <DataTable :columns="columns" :rows="rows" :loading="loading" export-name="expense-payments" empty-title="No expense claims here">
+            <template #cell-description="{ row }">
+                <span>{{ row.description ?? row.destination }}</span>
+                <button v-if="row.receipt_url" type="button" class="ml-2 text-xs text-brand-600 hover:underline dark:text-brand-400" @click="openServerFile(row.receipt_url + '?inline=1')">Receipt</button>
+            </template>
             <template #cell-employee_name="{ row }">
                 <div class="flex items-center gap-2">
                     <Avatar :src="row.photo" :name="row.employee_name" size="sm" />

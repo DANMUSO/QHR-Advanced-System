@@ -86,6 +86,7 @@ onMounted(load);
                             <span>
                                 <span class="block text-xs text-slate-500">{{ b.leave_type?.name }}</span>
                                 <span class="block font-semibold text-slate-900 dark:text-white">{{ b.available }}</span>
+                                <span class="block text-[11px] text-slate-400">{{ b.taken }} taken<template v-if="b.booked"> · {{ b.booked }} booked</template></span>
                             </span>
                         </button>
                         <button class="ml-1 text-slate-400 hover:text-brand-600" title="Adjust" @click="adjustModal = { open: true, balance: b, employee: emp }; adjustForm = { days: '', reason: '' }">

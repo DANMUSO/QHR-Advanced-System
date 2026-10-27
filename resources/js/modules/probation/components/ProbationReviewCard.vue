@@ -19,7 +19,7 @@ const ui = useUiStore();
 
 const STATUS = {
     pending: ['Awaiting first review', 'yellow'], in_review: ['In review', 'blue'], hr_review: ['Awaiting HR decision', 'purple'],
-    confirmed: ['Confirmed', 'green'], extended: ['Extended', 'orange'], terminated: ['Terminated', 'red'],
+    confirmed: ['Confirmed', 'green'], extended: ['Extended', 'orange'], terminated: ['Terminated', 'red'], cancelled: ['Closed', 'slate'],
 };
 const status = computed(() => STATUS[review.value.status] ?? [review.value.status, 'slate']);
 
@@ -42,6 +42,10 @@ async function submitStage() {
 async function submitDecision() {
     saving.value = true; errors.value = {};
     try {
+        if (decision.value.decision === 'extend' && review.value.min_extension_date && decision.value.extension_end_date && decision.value.extension_end_date < review.value.min_extension_date) {
+            errors.value = { extension_end_date: 'The new end date must be after the current probation end date.' };
+            return;
+        }
         const { data } = await api.post(`/probation/reviews/${props.review.id}/hr-decision`, decision.value);
         ui.toast(data.message);
         if (data.data?.id) latest.value = data.data;
@@ -114,7 +118,8 @@ async function submitDecision() {
                 </div>
                 <div v-if="decision.decision === 'extend'">
                     <label class="label">New probation end date</label>
-                    <input v-model="decision.extension_end_date" type="date" class="input" />
+                    <input v-model="decision.extension_end_date" type="date" class="input" :min="review.min_extension_date" />
+                    <p v-if="review.min_extension_date && !errors.extension_end_date" class="mt-1 text-xs text-slate-500">Must be later than the current end date. Earliest: {{ formatDate(review.min_extension_date) }}.</p>
                     <p v-if="errors.extension_end_date" class="field-error">{{ errors.extension_end_date }}</p>
                 </div>
             </div>

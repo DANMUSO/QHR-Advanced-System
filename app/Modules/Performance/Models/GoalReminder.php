@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class GoalReminder extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     protected $table = 'perf_goal_reminders';
 
     protected $guarded = ['id'];

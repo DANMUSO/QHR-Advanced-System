@@ -8,7 +8,7 @@ import { formatDate } from '@/lib/format';
 import Badge from '@/components/ui/Badge.vue';
 import DataTable from '@/components/ui/DataTable.vue';
 import Modal from '@/components/ui/Modal.vue';
-import LookupSelect from '@/components/ui/LookupSelect.vue';
+import LookupSelect, { loadOptions } from '@/components/ui/LookupSelect.vue';
 import Spinner from '@/components/ui/Spinner.vue';
 
 /** Assessment plans (§6.1): Plan → Focus areas → Objectives (weights total 100%) → KPIs, and KPI assignment. */
@@ -123,10 +123,17 @@ function toggleAssignee(id, name) {
     const i = list.findIndex((a) => a.employee_id === id);
     i >= 0 ? list.splice(i, 1) : list.push({ employee_id: id, name, target: '' });
 }
-function addAssignee(id) {
+async function addAssignee(id) {
     if (!id || form.value.assignees.some((a) => a.employee_id === Number(id))) return;
-    form.value.assignees.push({ employee_id: Number(id), name: `Employee #${id}`, target: '' });
+    const row = { employee_id: Number(id), name: '…', target: '' };
+    form.value.assignees.push(row);
     form.value.extra = '';
+    // Show the employee's name (the lookup list is cached).
+    try {
+        const emp = (await loadOptions('employees')).find((e) => e.id === Number(id));
+        const target = form.value.assignees.find((a) => a.employee_id === Number(id));
+        if (target) target.name = emp?.name ?? emp?.label ?? 'Employee';
+    } catch { /* keep the placeholder */ }
 }
 
 onMounted(() => { loadSetup(); loadPlans(); });
@@ -266,7 +273,7 @@ onMounted(() => { loadSetup(); loadPlans(); });
                                 <option value="qualitative">Qualitative (questions)</option>
                             </select>
                         </div>
-                        <div><label class="label">End / due date *</label><input v-model="form.due_date" type="date" class="input" /><p v-if="errors.due_date" class="field-error">{{ errors.due_date }}</p></div>
+                        <div><label class="label">End / due date *</label><input v-model="form.due_date" type="date" class="input" :min="plan?.cycle?.start_date" :max="plan?.cycle?.end_date" /><p v-if="errors.due_date" class="field-error">{{ errors.due_date }}</p><p v-else-if="plan?.cycle?.start_date" class="mt-1 text-xs text-slate-400">Within {{ plan.cycle.name }}: {{ plan.cycle.start_date }} – {{ plan.cycle.end_date }}</p></div>
                         <template v-if="form.type === 'quantitative'">
                             <div>
                                 <label class="label">Unit *</label>
@@ -316,7 +323,7 @@ onMounted(() => { loadSetup(); loadPlans(); });
                                 <option value="distributed">Distributed — share the target</option>
                             </select>
                         </div>
-                        <div><label class="label">Due date (optional)</label><input v-model="form.due_date" type="date" class="input" /></div>
+                        <div><label class="label">Due date (optional)</label><input v-model="form.due_date" type="date" class="input" :min="plan?.cycle?.start_date" :max="plan?.cycle?.end_date" /><p v-if="errors.due_date" class="field-error">{{ errors.due_date }}</p></div>
                     </div>
                     <div v-if="form.mode === 'self'">
                         <label class="label">Owner</label>

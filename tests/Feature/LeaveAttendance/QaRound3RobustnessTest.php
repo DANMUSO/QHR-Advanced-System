@@ -35,7 +35,9 @@ class QaRound3RobustnessTest extends LeaveAttendanceTestCase
         $leave->save();
 
         $card = collect($this->actingAs($juma)->getJson('/api/leave/my-balances')->assertOk()->json('data'))->firstWhere('code', 'UNPAID');
-        $this->assertEquals(2, $card['taken']);
+        // Approved days still ahead are "booked", not yet taken (QA round 5, #30).
+        $this->assertEquals(0, $card['taken']);
+        $this->assertEquals(2, $card['booked']);
     }
 
     public function test_expense_categories_come_from_the_server(): void

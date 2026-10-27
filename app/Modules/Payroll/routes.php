@@ -69,6 +69,7 @@ Route::prefix('payroll')->group(function () {
         Route::post('runs/{run}/reopen', [PayrollRunController::class, 'reopen']);
         Route::delete('runs/{run}', [PayrollRunController::class, 'destroy']);
         Route::get('runs/{run}/adjustments', [PayrollRunController::class, 'adjustments']);
+        Route::get('runs/{run}/payable-employees', [PayrollRunController::class, 'payableEmployees']);
         Route::post('runs/{run}/adjustments', [PayrollRunController::class, 'storeAdjustment']);
         Route::put('runs/{run}/adjustments/{adjustment}', [PayrollRunController::class, 'updateAdjustment']);
         Route::delete('runs/{run}/adjustments/{adjustment}', [PayrollRunController::class, 'destroyAdjustment']);

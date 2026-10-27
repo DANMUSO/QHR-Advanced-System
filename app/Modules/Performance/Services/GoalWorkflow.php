@@ -51,6 +51,7 @@ class GoalWorkflow
         }
 
         $due = $dueDate ?: $kpi->due_date->toDateString();
+        $plan->cycle->assertDateWithin($due);
         $target = $this->kpiTarget($kpi);
 
         if ($mode === 'self') {
@@ -332,6 +333,7 @@ class GoalWorkflow
             throw ValidationException::withMessages(['due_date' => 'Approved goals cannot be extended.']);
         }
         $old = $goal->due_date->toDateString();
+        $goal->cycle?->assertDateWithin($dueDate);
         if (Carbon::parse($dueDate)->lte($goal->due_date)) {
             throw ValidationException::withMessages(['due_date' => 'The new due date must be after the current one ('.$goal->due_date->format('d M Y').').']);
         }
@@ -348,6 +350,7 @@ class GoalWorkflow
         $this->assertStatus($goal, ['under_review'], 'Only goals under review can be amended.');
         $goal->loadMissing('kpi.unit', 'parent');
         $old = ['target' => $goal->target, 'due_date' => $goal->due_date->toDateString()];
+        $goal->cycle?->assertDateWithin($dueDate);
         if ($target !== null && $goal->split === 'distributed' && ! $goal->kpi->isPercentage()) {
             $siblings = Goal::where('kpi_id', $goal->kpi_id)->where('id', '!=', $goal->id)->where('split', 'distributed')
                 ->where('parent_goal_id', $goal->parent_goal_id)->sum('target');

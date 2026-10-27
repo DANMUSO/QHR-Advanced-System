@@ -12,6 +12,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use App\Models\Company;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -30,24 +33,44 @@ class ExpenseController extends Controller
 
         return response()->json(['data' => ExpenseClaim::where('employee_id', $employee->id)->latest('expense_date')->get()
             ->map(fn (ExpenseClaim $e) => $this->presentExpense($e)),
-            'categories' => ExpenseClaim::CATEGORIES]);
+            'categories' => ExpenseClaim::CATEGORIES,
+            'receipt_threshold' => static::receiptThreshold($employee->company_id)]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $employee = $this->me($request);
+        // A receipt is required above the company threshold (default 0: always required).
+        $threshold = static::receiptThreshold($employee->company_id);
+        $needsReceipt = (float) $request->input('amount', 0) > $threshold;
         $data = $request->validate([
             'description' => ['required', 'string', 'max:255'],
             'category' => ['required', Rule::in(ExpenseClaim::CATEGORIES)],
             'amount' => ['required', 'numeric', 'min:1', 'max:10000000'],
             'expense_date' => ['required', 'date', 'before_or_equal:today', 'after:'.now()->subDays(90)->toDateString()],
             'notes' => ['nullable', 'string', 'max:2000'],
-        ], ['expense_date.after' => 'Expenses older than 90 days cannot be claimed.']);
+            'receipt' => [$needsReceipt ? 'required' : 'nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'mimetypes:application/pdf,image/jpeg,image/png', 'max:5120'],
+        ], [
+            'expense_date.after' => 'Expenses older than 90 days cannot be claimed.',
+            'receipt.required' => $threshold > 0 ? 'Attach the receipt (required for expenses above '.number_format($threshold).').' : 'Attach the receipt.',
+            'receipt.max' => 'The receipt must be 5 MB or smaller.',
+            'receipt.mimes' => 'The receipt must be a PDF, JPG or PNG file.',
+            'receipt.mimetypes' => 'The receipt must be a PDF, JPG or PNG file.',
+        ]);
+        unset($data['receipt']);
 
         $claim = new ExpenseClaim($data + ['status' => 'submitted', 'approver_employee_id' => $this->workflow()->approverIdFor($employee)]);
         $claim->employee_id = $employee->id;
         $claim->company_id = $employee->company_id;
         $claim->save();
+        if ($file = $request->file('receipt')) {
+            $claim->forceFill([
+                'receipt_path' => $file->store("expenses/{$claim->company_id}/{$claim->id}", 'local'),
+                'receipt_name' => mb_substr($file->getClientOriginalName(), 0, 200),
+                'receipt_mime' => $file->getMimeType() ?: 'application/octet-stream',
+                'receipt_size' => $file->getSize(),
+            ])->save();
+        }
         $this->workflow()->notifySubmitted($claim);
 
         return response()->json(['data' => $this->presentExpense($claim), 'message' => 'Expense submitted for approval.'], 201);
@@ -174,6 +197,36 @@ class ExpenseController extends Controller
         return response()->json(['data' => ['id' => $advance->id] + $loans->presentAdvance($advance), 'message' => 'Salary advance requested. Payroll will review it.'], 201);
     }
 
+    /**
+     * Authorised receipt download (?inline=1 previews): the claimant, their approver, expense approvers
+     * (claims.approve / payroll.manage) and finance (claims.pay).
+     */
+    public function receipt(Request $request, int $id): StreamedResponse
+    {
+        $claim = ExpenseClaim::findOrFail($id);
+        $user = $request->user();
+        $allowed = $claim->employee_id === $user->employee?->id
+            || ($user->employee && (int) $claim->approver_employee_id === (int) $user->employee->id)
+            || (int) $claim->decided_by === (int) $user->id
+            || ExpenseWorkflow::canApproveAll($user)
+            || $user->can('claims.pay');
+        abort_unless($allowed, 403);
+        abort_unless($claim->receipt_path && Storage::disk('local')->exists($claim->receipt_path), 404, 'No receipt was uploaded for this expense.');
+
+        return Storage::disk('local')->response($claim->receipt_path, $claim->receipt_name ?: 'receipt', [
+            'Content-Type' => $claim->receipt_mime ?: 'application/octet-stream',
+            'X-Content-Type-Options' => 'nosniff',
+        ], $request->boolean('inline') ? 'inline' : 'attachment');
+    }
+
+    /** Amount above which an expense needs a receipt (company setting expense_receipt_threshold, default 0 = always). */
+    public static function receiptThreshold(?int $companyId): float
+    {
+        $company = $companyId ? Company::find($companyId) : null;
+
+        return max(0.0, (float) ($company?->setting('expense_receipt_threshold', 0) ?? 0));
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────────────────────
 
     private function me(Request $request): Employee
@@ -198,6 +251,8 @@ class ExpenseController extends Controller
             'decided_at' => $e->decided_at, 'created_at' => $e->created_at,
             'payment_method' => $e->payment_method, 'payment_reference' => $e->payment_reference,
             'paid_at' => $e->paid_at, 'payroll_queued_at' => $e->payroll_queued_at,
+            'has_receipt' => (bool) $e->receipt_path, 'receipt_name' => $e->receipt_name,
+            'receipt_url' => $e->receipt_path ? '/api/expenses/'.$e->id.'/receipt' : null,
         ];
         if ($withEmployee) {
             $row += [

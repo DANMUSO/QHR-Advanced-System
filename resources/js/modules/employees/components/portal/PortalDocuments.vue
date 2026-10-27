@@ -115,9 +115,9 @@ onMounted(load);
                 <div class="flex items-center gap-2">
                     <template v-if="doc.requires_acknowledgement">
                         <Badge v-if="doc.acknowledged" color="green"><CheckCircle2 class="size-3" /> Acknowledged</Badge>
-                        <button v-else class="btn-primary !py-1.5" @click="acknowledge(doc)">Acknowledge</button>
+                        <button v-else class="btn-primary !py-1.5" :disabled="!doc.viewed" :title="doc.viewed ? '' : 'Open the document first: you can acknowledge it once you have read it.'" @click="acknowledge(doc)">Acknowledge</button>
                     </template>
-                    <button class="btn-ghost !p-1.5" title="Download" @click="openServerFile(`/api/documents/company/${doc.id}/download`)"><Download class="size-4" /></button>
+                    <button class="btn-ghost !p-1.5" title="Open / download" @click="openServerFile(`/api/documents/company/${doc.id}/download?inline=1`); doc.viewed = true"><Download class="size-4" /></button>
                 </div>
             </div>
             <div v-if="!companyDocs.length" class="card p-10 text-center text-slate-400">No company documents available.</div>

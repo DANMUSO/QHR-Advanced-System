@@ -12,7 +12,11 @@ class LoginRecorder
 {
     public function __construct(private Request $request) {}
 
-    public function record(string $event, ?User $user, ?string $email = null): LoginActivity
+    /**
+     * Events: login, failed, locked, logout, two_factor_failed, impersonation_started, impersonation_stopped.
+     * Impersonation rows belong to the impersonated account and name the administrator in impersonator_id.
+     */
+    public function record(string $event, ?User $user, ?string $email = null, ?User $impersonator = null): LoginActivity
     {
         $agent = new Agent;
         $agent->setUserAgent($ua = (string) $this->request->userAgent());
@@ -32,6 +36,8 @@ class LoginRecorder
 
         $activity = LoginActivity::create([
             'user_id' => $user?->id,
+            'company_id' => $user?->company_id,
+            'impersonator_id' => $impersonator?->id,
             'email' => $email ?? $user?->email,
             'event' => $event,
             'ip_address' => $this->request->ip(),

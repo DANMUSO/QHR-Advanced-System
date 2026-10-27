@@ -10,6 +10,7 @@ import DataTable from '@/components/ui/DataTable.vue';
 import Avatar from '@/components/ui/Avatar.vue';
 import Badge from '@/components/ui/Badge.vue';
 import PageHeader from '@/components/ui/PageHeader.vue';
+import Spinner from '@/components/ui/Spinner.vue';
 import ReinstateModal from '../components/ReinstateModal.vue';
 import EmployeeForm from './EmployeeForm.vue';
 import { tone, label, leavingLabel, CONTRACT_TYPES, downloadFile, paginatorOf, cleanParams } from '../lib';
@@ -127,12 +128,19 @@ async function bulk(action) {
     } finally { busy.value = false; }
 }
 
+// Row action in progress (creating a login also sends the activation email, which can take a moment).
+const rowBusy = ref(null);
 async function single(row, action) {
+    if (rowBusy.value) return;
+    if (action === 'create' && !row.email) { swal.toast(`Add a work email for ${row.full_name} before creating a login.`, 'warning'); return; }
+    rowBusy.value = row.id;
     try {
         const { data } = await api.post(`/employees/${row.id}/account${action === 'resend' ? '/resend' : ''}`);
-        swal.toast(data.message);
-        load(); loadStats();
+        swal.toast(data.message ?? (action === 'create' ? 'Login created.' : 'Activation email sent.'), 'success');
+        selected.value.delete(row.id);
+        await Promise.all([load(), loadStats()]);
     } catch (e) { swal.toast(errorMessage(e), 'error'); }
+    finally { rowBusy.value = null; }
 }
 
 async function exportCsv() {
@@ -227,8 +235,8 @@ onMounted(async () => {
                 </div>
             </template>
             <template v-if="view === 'not_activated' || view === 'without_login' || view === 'exited'" #actions="{ row }">
-                <button v-if="view === 'without_login'" class="btn-ghost !p-1.5" title="Create login" :disabled="!row.email" @click="single(row, 'create')"><KeyRound class="size-4" /></button>
-                <button v-if="view === 'not_activated'" class="btn-ghost !p-1.5" title="Resend activation email" @click="single(row, 'resend')"><Mail class="size-4" /></button>
+                <button v-if="view === 'without_login'" class="btn-ghost !p-1.5" :title="row.email ? 'Create login' : 'Add a work email first'" :class="!row.email && 'opacity-50'" :disabled="rowBusy === row.id" @click="single(row, 'create')"><Spinner v-if="rowBusy === row.id" /><KeyRound v-else class="size-4" /></button>
+                <button v-if="view === 'not_activated'" class="btn-ghost !p-1.5" title="Resend activation email" :disabled="rowBusy === row.id" @click="single(row, 'resend')"><Spinner v-if="rowBusy === row.id" /><Mail v-else class="size-4" /></button>
                 <button v-if="view === 'exited' && !row.reinstated && auth.can('employees.exit')" class="btn-ghost !py-1 text-xs" @click="reinstateFor = row"><RotateCcw class="size-4" /> Re-instate</button>
             </template>
         </DataTable>

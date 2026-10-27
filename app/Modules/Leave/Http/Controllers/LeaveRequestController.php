@@ -357,6 +357,7 @@ class LeaveRequestController extends Controller
             ->when($request->filled('department_id'), fn ($q) => $q->where('department_id', $request->integer('department_id')))
             ->when($request->filled('search'), fn ($q) => $q->search($request->query('search')))
             ->where('status', 'active')->orderBy('first_name')->orderBy('last_name')->get();
+        $booked = $this->balances->bookedMap($year, $employees->pluck('id')->all());
 
         return response()->json(['year' => $year, 'data' => $employees->map(fn ($e) => [
             'id' => $e->id,
@@ -370,7 +371,8 @@ class LeaveRequestController extends Controller
                 'leave_type' => ['id' => $b->leaveType->id, 'name' => $b->leaveType->name, 'code' => $b->leaveType->code, 'color' => $b->leaveType->color],
                 'entitled' => $b->entitled,
                 'accrued' => $b->accrued,
-                'taken' => $b->taken,
+                'taken' => round(max(0, $b->taken - ($booked[$b->employee_id.'-'.$b->leave_type_id] ?? 0)), 2),
+                'booked' => $booked[$b->employee_id.'-'.$b->leave_type_id] ?? 0,
                 'adjusted' => $b->adjusted,
                 'carried_forward' => $b->carried_forward,
                 'forfeited' => $b->forfeited,

@@ -104,6 +104,7 @@ class LeaveReportController extends Controller
     private function balances(Request $request, int $year): array
     {
         $pending = $this->pendingMap($request, $year);
+        $booked = app(\App\Modules\Leave\Services\LeaveBalanceService::class)->bookedMap($year);
         $rows = $this->filterByEmployee(LeaveBalance::where('year', $year), $request)
             ->whereHas('employee', fn ($e) => $e->where('status', 'active'))
             ->with(['employee:id,first_name,last_name,employee_number,department_id,branch_id', 'employee.department:id,name', 'leaveType:id,name,code,sort_order'])
@@ -117,7 +118,8 @@ class LeaveReportController extends Controller
                 'entitled' => round($b->entitled + $b->accrued, 2),
                 'carried_forward' => $b->carried_forward,
                 'adjusted' => $b->adjusted,
-                'taken' => $b->taken,
+                'taken' => round(max(0, $b->taken - ($booked[$b->employee_id.'-'.$b->leave_type_id] ?? 0)), 2),
+                'booked' => $booked[$b->employee_id.'-'.$b->leave_type_id] ?? 0,
                 'forfeited' => $b->forfeited,
                 'pending' => $pending[$b->employee_id.'-'.$b->leave_type_id] ?? 0,
                 'balance' => $b->available,
@@ -132,6 +134,7 @@ class LeaveReportController extends Controller
             $this->num(['key' => 'carried_forward', 'label' => 'Carried fwd']),
             $this->num(['key' => 'adjusted', 'label' => 'Adjusted']),
             $this->num(['key' => 'taken', 'label' => 'Taken']),
+            $this->num(['key' => 'booked', 'label' => 'Booked']),
             $this->num(['key' => 'forfeited', 'label' => 'Forfeited']),
             $this->num(['key' => 'pending', 'label' => 'Pending']),
             $this->num(['key' => 'balance', 'label' => 'Balance']),
@@ -328,18 +331,19 @@ class LeaveReportController extends Controller
     private function consolidated(Request $request, int $year): array
     {
         $types = LeaveType::get()->keyBy('id');
+        $booked = app(\App\Modules\Leave\Services\LeaveBalanceService::class)->bookedMap($year);
         $rows = $this->filterByEmployee(LeaveBalance::where('year', $year), $request)
             ->whereHas('employee', fn ($e) => $e->where('status', 'active'))
             ->with(['employee:id,first_name,last_name,employee_number,department_id', 'employee.department:id,name', 'leaveType:id,name,code'])
             ->get()
             ->groupBy('employee_id')
-            ->map(function (Collection $g) {
+            ->map(function (Collection $g) use ($booked) {
                 $first = $g->first();
                 $row = [
                     'employee_number' => $first->employee?->employee_number,
                     'employee_name' => $first->employee?->full_name,
                     'department' => $first->employee?->department?->name,
-                    'total_taken' => round($g->sum('taken'), 2),
+                    'total_taken' => round(max(0, $g->sum('taken') - $g->sum(fn ($b) => $booked[$b->employee_id.'-'.$b->leave_type_id] ?? 0)), 2),
                     'total_balance' => round($g->sum('available'), 2),
                 ];
                 foreach ($g as $b) {

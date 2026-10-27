@@ -6,6 +6,7 @@ use App\Modules\Payroll\Models\PayrollComponent;
 use App\Modules\Payroll\Models\PayrollEmployeeComponent;
 use App\Modules\Payroll\Models\PayrollPayProfile;
 use App\Modules\Payroll\Models\PayrollStructure;
+use App\Modules\Payroll\Services\PayStructureService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -84,30 +85,30 @@ class StructureController extends PayrollController
         return response()->json(['message' => 'Pay structure deleted.']);
     }
 
-    /** Link employees to the structure and assign its components from a date (does not change basic salary). */
-    public function apply(Request $request, PayrollStructure $structure): JsonResponse
+    /**
+     * Link employees to the structure from a date: basic salary becomes the structure's basic (salary-history row
+     * "Structure applied") and its components are assigned. Never effective before an employee's joining date.
+     */
+    public function apply(Request $request, PayrollStructure $structure, PayStructureService $service): JsonResponse
     {
         $data = $request->validate([
             'employee_ids' => ['required', 'array', 'min:1'],
             'employee_ids.*' => ['integer'],
             'effective_from' => ['required', 'date'],
         ]);
+        foreach ($data['employee_ids'] as $id) {
+            PayProfileController::assertNotOwnPay($request, (int) $id);
+        }
         $profiles = PayrollPayProfile::whereIn('employee_id', $data['employee_ids'])->get();
-        DB::transaction(function () use ($profiles, $structure, $data) {
+        DB::transaction(function () use ($profiles, $structure, $data, $service, $request) {
             foreach ($profiles as $p) {
-                $p->update(['structure_id' => $structure->id]);
-                foreach ($structure->components ?? [] as $c) {
-                    PayrollEmployeeComponent::where('employee_id', $p->employee_id)->where('component_id', $c['component_id'])->whereNull('effective_to')
-                        ->whereDate('effective_from', '<', $data['effective_from'])
-                        ->update(['effective_to' => \Carbon\Carbon::parse($data['effective_from'])->subDay()->toDateString()]);
-                    PayrollEmployeeComponent::updateOrCreate(
-                        ['employee_id' => $p->employee_id, 'component_id' => $c['component_id'], 'effective_from' => $data['effective_from']],
-                        ['company_id' => $p->company_id, 'amount' => $c['amount'] ?? null, 'rate' => $c['rate'] ?? null, 'effective_to' => null, 'notes' => "From structure {$structure->name}"],
-                    );
-                }
+                $service->apply($structure, $p, $data['effective_from'], $request->user()->id);
             }
         });
+        activity('payroll')->performedOn($structure)->causedBy($request->user())
+            ->withProperties(['employee_ids' => $profiles->pluck('employee_id'), 'effective_from' => $data['effective_from'], 'basic' => $structure->basic_salary])
+            ->log('Pay structure applied');
 
-        return response()->json(['message' => "Structure applied to {$profiles->count()} employee(s)."]);
+        return response()->json(['message' => "Structure applied to {$profiles->count()} employee(s); basic salary set to ".number_format($structure->basic_salary, 2).'.']);
     }
 }

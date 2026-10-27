@@ -28,6 +28,7 @@ const groups = [
         { key: 'annual_leave_days', label: 'Annual leave days', type: 'number' },
         { key: 'monthly_accrual', label: 'Monthly accrual (days)', type: 'number', step: '0.01' },
         { key: 'carry_forward_cap', label: 'Carry-forward cap (days)', type: 'number', step: '0.5' },
+        { key: 'resignation_notice_days', label: 'Resignation notice (days)', type: 'number' },
     ] },
     { title: 'Medical cover', icon: HeartPulse, fields: [
         { key: 'medical_annual_limit', label: 'Annual limit', type: 'number', money: true },

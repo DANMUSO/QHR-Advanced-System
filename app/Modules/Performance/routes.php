@@ -198,4 +198,6 @@ Route::prefix('succession')->middleware('permission:performance.admin')->group(f
     Route::put('talent-pools/{talentPool}', [SuccessionController::class, 'updatePool']);
     Route::delete('talent-pools/{talentPool}', [SuccessionController::class, 'destroyPool']);
     Route::get('9box', [SuccessionController::class, 'nineBox']);
+    Route::put('9box/potential', [SuccessionController::class, 'ratePotential']);
+    Route::get('positions/{position}/holders', [SuccessionController::class, 'positionHolders'])->whereNumber('position');
 });

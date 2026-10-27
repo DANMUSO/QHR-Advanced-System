@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** Amortisation row. Child of PayrollLoan (loaded through the loan). */
 class PayrollLoanInstalment extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     public $timestamps = false;
 
     protected $guarded = ['id'];

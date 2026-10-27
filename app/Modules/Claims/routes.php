@@ -22,6 +22,7 @@ Route::prefix('claims')->group(function () {
     // HR approval queue. No permission gate: a claim can be routed (or escalated, ApproverResolver) to an employee
     // without claims.approve; ApprovalController::queueFor / canHrDecide do the authorisation.
     Route::get('approvals', [ApprovalController::class, 'index']);
+    Route::get('approvals/access', [ApprovalController::class, 'access']);
 
     // Finance payment queue (non-wildcard)
     Route::middleware('permission:claims.pay')->group(function () {
@@ -34,6 +35,7 @@ Route::prefix('claims')->group(function () {
     Route::middleware('permission:settings.manage|claims.approve')->group(function () {
         Route::get('settings', [SettingsController::class, 'show']);
         Route::put('settings/approvers', [SettingsController::class, 'updateApprovers']);
+        Route::put('settings/expenses', [SettingsController::class, 'updateExpenseRules']);
         Route::get('limits', [SettingsController::class, 'limits']);
         Route::put('limits/{employee}', [SettingsController::class, 'updateLimit'])->whereNumber('employee');
     });

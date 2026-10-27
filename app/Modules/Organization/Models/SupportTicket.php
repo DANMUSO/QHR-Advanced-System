@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /** Help-desk ticket raised by a company user to the platform support team (super admins). */
 class SupportTicket extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     protected $table = 'org_support_tickets';
 
     protected $guarded = ['id'];

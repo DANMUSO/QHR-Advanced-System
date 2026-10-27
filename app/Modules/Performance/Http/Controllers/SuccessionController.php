@@ -8,10 +8,12 @@ use App\Models\Position;
 use App\Modules\Performance\Http\Controllers\Concerns\PresentsPeople;
 use App\Modules\Performance\Models\Appraisal;
 use App\Modules\Performance\Models\CareerPath;
+use App\Modules\Performance\Models\Goal;
 use App\Modules\Performance\Models\Cycle;
 use App\Modules\Performance\Models\PotentialRating;
 use App\Modules\Performance\Models\SuccessionPlan;
 use App\Modules\Performance\Models\TalentPool;
+use App\Modules\Performance\Services\AppraisalService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -38,6 +40,11 @@ class SuccessionController extends Controller
     {
         $data = $this->validatedPlan($request);
         $position = Position::findOrFail($data['position_id']);
+        // The incumbent defaults to the position's current holder (when there is exactly one).
+        if (empty($data['incumbent_id'])) {
+            $holders = $this->holders($position->id);
+            $data['incumbent_id'] = $holders->count() === 1 ? $holders->first()->id : null;
+        }
 
         $plan = new SuccessionPlan($data);
         $plan->company_id = $position->company_id;
@@ -55,6 +62,19 @@ class SuccessionController extends Controller
         $plan->update($data);
 
         return response()->json(['message' => 'Succession plan updated.', 'data' => $this->presentPlan($plan->fresh(['position', 'incumbent', 'successor']))]);
+    }
+
+    /** GET /succession/positions/{position}/holders — current holders of a position, to pre-fill the incumbent. */
+    public function positionHolders(int $position): JsonResponse
+    {
+        Position::findOrFail($position);
+
+        return response()->json(['data' => $this->holders($position)->map(fn (Employee $e) => ['id' => $e->id, 'name' => $e->full_name])->values()]);
+    }
+
+    private function holders(int $positionId)
+    {
+        return Employee::active()->where('position_id', $positionId)->orderBy('date_of_joining')->get(['id', 'first_name', 'last_name']);
     }
 
     public function destroy(SuccessionPlan $plan): JsonResponse
@@ -141,32 +161,65 @@ class SuccessionController extends Controller
 
     // ---- 9-box -------------------------------------------------------------------------------
 
-    /** Employees placed on the grid for a cycle: performance from the appraisal score, potential from talent ratings. */
-    public function nineBox(Request $request): JsonResponse
+    /**
+     * Employees placed on the grid for a cycle. Performance comes from the finalised appraisal score, or — before
+     * appraisals are finalised — from the KPI score of the employee's approved results in the cycle. Potential comes
+     * from potential ratings; anyone with a performance score but no potential rating is listed under
+     * "potential_not_rated" (with the action to rate them) instead of being placed on a guessed box.
+     */
+    public function nineBox(Request $request, AppraisalService $appraisals): JsonResponse
     {
         $request->validate(['cycle_id' => ['required', 'integer']]);
         $cycle = Cycle::findOrFail($request->integer('cycle_id'));
 
-        $potential = PotentialRating::where('cycle_id', $cycle->id)->pluck('potential', 'employee_id');
-        $appraisals = Appraisal::where('cycle_id', $cycle->id)->whereNotNull('final_score')
-            ->with('employee:id,first_name,last_name,photo_path,position_id', 'employee.position:id,title')->get();
+        $potential = PotentialRating::where('cycle_id', $cycle->id)->get()->keyBy('employee_id');
+        $finals = Appraisal::where('cycle_id', $cycle->id)->whereNotNull('final_score')->pluck('final_score', 'employee_id');
+        $withResults = Goal::where('cycle_id', $cycle->id)->where('status', 'approved')->distinct()->pluck('employee_id');
+        $kpi = $withResults->isEmpty() ? [] : $appraisals->kpiScores($cycle, $withResults);
 
-        $rows = $appraisals->filter(fn ($a) => $a->employee)->map(function ($a) use ($potential) {
-            $score = (float) $a->final_score;
+        $scores = collect($kpi)->filter(fn ($s) => $s !== null)->map(fn ($s) => ['score' => (float) $s, 'source' => 'kpi']);
+        foreach ($finals as $employeeId => $final) {
+            $scores[(int) $employeeId] = ['score' => (float) $final, 'source' => 'appraisal'];
+        }
+        $employees = Employee::whereIn('id', $scores->keys())->with('position:id,title')->get(['id', 'first_name', 'last_name', 'photo_path', 'position_id']);
+
+        $rows = $employees->map(function (Employee $e) use ($scores, $potential) {
+            $score = $scores[$e->id]['score'];
+            $rating = $potential[$e->id] ?? null;
 
             return [
-                'id' => $a->employee->id,
-                'name' => $a->employee->full_name,
-                'photo_url' => $a->employee->photo_url,
-                'position' => $a->employee->position?->title,
-                'final_score' => round($score, 1),
+                'id' => $e->id, 'name' => $e->full_name, 'photo_url' => $e->photo_url, 'position' => $e->position?->title,
+                'final_score' => round($score, 1), 'score_source' => $scores[$e->id]['source'],
                 'performance_box' => $score >= 85 ? 3 : ($score >= 70 ? 2 : 1),
-                'potential_box' => max(1, min(3, (int) ($potential[$a->employee->id] ?? 2))),
-                'potential_rated' => isset($potential[$a->employee->id]),
+                'potential_box' => $rating ? max(1, min(3, (int) $rating->potential)) : null,
+                'potential_rated' => (bool) $rating,
+                'potential_note' => $rating?->note,
             ];
-        })->values();
+        })->sortBy('name')->values();
 
-        return response()->json(['data' => $rows]);
+        return response()->json([
+            'data' => $rows->where('potential_rated', true)->values(),
+            'potential_not_rated' => $rows->where('potential_rated', false)->values(),
+        ]);
+    }
+
+    /** PUT /succession/9box/potential {cycle_id, employee_id, potential 1–3, note?} — rate (or re-rate) potential for the 9-box. */
+    public function ratePotential(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'cycle_id' => ['required', 'integer'],
+            'employee_id' => ['required', 'integer'],
+            'potential' => ['required', 'integer', 'min:1', 'max:3'],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $cycle = Cycle::findOrFail($data['cycle_id']);
+        $employee = Employee::where('company_id', $cycle->company_id)->findOrFail($data['employee_id']);
+
+        $rating = PotentialRating::withoutGlobalScopes()->firstOrNew(['cycle_id' => $cycle->id, 'employee_id' => $employee->id]);
+        $rating->company_id = $cycle->company_id;
+        $rating->fill(['potential' => $data['potential'], 'note' => $data['note'] ?? $rating->note, 'rated_by_user_id' => $request->user()->id])->save();
+
+        return response()->json(['message' => "Potential rated for {$employee->full_name}.", 'data' => $rating]);
     }
 
     // ---- helpers -----------------------------------------------------------------------------

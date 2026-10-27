@@ -15,7 +15,7 @@ class PayrollSalaryHistory extends Model
     use BelongsToCompany, LogsActivity;
 
     public const REASONS = ['initial' => 'Initial', 'promotion' => 'Promotion', 'increment' => 'Increment', 'adjustment' => 'Adjustment',
-        'transfer' => 'Company transfer', 'reinstatement' => 'Reinstatement'];
+        'transfer' => 'Company transfer', 'reinstatement' => 'Reinstatement', 'structure' => 'Structure applied'];
 
     protected $table = 'payroll_salary_history';
 

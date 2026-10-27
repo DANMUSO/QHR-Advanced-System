@@ -45,6 +45,9 @@ class SelfServiceController extends Controller
             'profile_changes' => ProfileChangeRequest::where('employee_id', $e->id)->with('decider:id,name')->latest('id')->limit(20)->get()
                 ->map(fn ($r) => $this->presentChange($r)),
             'resignations' => ResignationRequest::where('employee_id', $e->id)->latest('id')->get()->map(fn ($r) => $this->presentResignation($r)),
+            // The portal form shows the earliest allowed last working day (notice date + the company's notice days).
+            'resignation_notice' => ['days' => \App\Modules\Employees\Support\ResignationNotice::days((int) $e->company_id),
+                'earliest_last_day' => \App\Modules\Employees\Support\ResignationNotice::earliestLastDay($e)->toDateString()],
             'letter_requests' => LetterRequest::where('employee_id', $e->id)->with('letter')->latest('id')->get()->map(fn ($r) => $this->presentLetterRequest($r)),
             'letters' => EmployeeLetter::where('employee_id', $e->id)->latest('id')->get()->map(fn (EmployeeLetter $l) => [
                 'id' => $l->id, 'reference' => $l->reference, 'subject' => $l->subject,

@@ -9,6 +9,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import DataTable from '@/components/ui/DataTable.vue';
 import Modal from '@/components/ui/Modal.vue';
 import PageHeader from '@/components/ui/PageHeader.vue';
+import EmployeePicker from '@/modules/employees/components/EmployeePicker.vue';
 
 const ui = useUiStore();
 const requests = ref([]);
@@ -20,6 +21,8 @@ const form = ref({});
 const errors = ref({});
 const saving = ref(false);
 const confirm = ref({ open: false, row: null, loading: false });
+// The data subject is always an employee record (name/email default from it).
+const picked = ref(null);
 
 const typeColors = { access: 'blue', erasure: 'red', rectification: 'yellow', portability: 'green', objection: 'purple' };
 const statusColors = { pending: 'yellow', in_progress: 'blue', completed: 'green', rejected: 'red' };
@@ -49,16 +52,20 @@ async function load(page = 1) {
 function openCreate() {
     editing.value = null; errors.value = {};
     form.value = { requester_name: '', requester_email: '', type: 'access', description: '' };
+    picked.value = null;
     modal.value = true;
 }
 
 function openEdit(row) {
     editing.value = row; errors.value = {};
     form.value = { ...row };
+    picked.value = row.employee_id ? { id: row.employee_id, full_name: row.employee_name ?? row.requester_name, employee_number: row.employee_number } : null;
     modal.value = true;
 }
 
 async function save() {
+    if (!picked.value) { errors.value = { employee_id: 'Select the employee the request is about.' }; return; }
+    form.value.employee_id = picked.value.id;
     saving.value = true;
     errors.value = {};
     try {
@@ -119,9 +126,14 @@ onMounted(load);
 
         <Modal :open="modal" :title="editing ? `Data Request ${editing.reference}` : 'Log Data Request'" @close="modal = false">
             <div class="space-y-4">
+                <div>
+                    <label class="label">Employee <span class="text-rose-500">*</span></label>
+                    <EmployeePicker v-model="picked" status="active,suspended,exited" />
+                    <p v-if="errors.employee_id" class="field-error">{{ errors.employee_id }}</p>
+                </div>
                 <div class="grid gap-4 sm:grid-cols-2">
                     <div>
-                        <label class="label">Requester Name</label>
+                        <label class="label">Requester Name <span class="text-xs font-normal text-slate-400">(defaults to the employee)</span></label>
                         <input v-model="form.requester_name" type="text" class="input" />
                         <p v-if="errors.requester_name" class="field-error">{{ errors.requester_name }}</p>
                     </div>

@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Modules\Documents\Models\CompanyDocument;
 use App\Modules\Documents\Models\CompanyDocumentAcknowledgement;
 use App\Modules\Documents\Models\CompanyDocumentVersion;
+use App\Modules\Documents\Models\CompanyDocumentView;
 use App\Modules\Documents\Notifications\AcknowledgementReminder;
 use App\Modules\Documents\Notifications\CompanyDocumentPublished;
 use App\Modules\Documents\Support\DocumentAccess;
@@ -38,7 +39,8 @@ class CompanyDocumentController extends Controller
             ->when($request->boolean('requires_acknowledgement'), fn ($q) => $q->where('requires_acknowledgement', true));
 
         if ($employee) {
-            $query->withExists(['acknowledgements as acknowledged' => fn ($q) => $q->where('employee_id', $employee->id)]);
+            $query->withExists(['acknowledgements as acknowledged' => fn ($q) => $q->where('employee_id', $employee->id),
+                'currentViews as viewed' => fn ($q) => $q->where('employee_id', $employee->id)]);
             if ($request->query('status') === 'pending') {
                 $query->where('requires_acknowledgement', true)
                     ->whereDoesntHave('acknowledgements', fn ($q) => $q->where('employee_id', $employee->id));
@@ -66,11 +68,15 @@ class CompanyDocumentController extends Controller
             $ack = $companyDocument->acknowledgements()->where('employee_id', $user->employee->id)->first();
             $companyDocument->setAttribute('acknowledged', (bool) $ack);
             $companyDocument->setAttribute('acknowledged_at', $ack?->acknowledged_at);
+            $view = $this->currentView($companyDocument, $user->employee->id);
+            $companyDocument->setAttribute('viewed', (bool) $view);
+            $companyDocument->setAttribute('viewed_at', $view?->viewed_at);
         }
 
         return response()->json([
             ...$this->present($companyDocument, $manages),
             'acknowledged_at' => $companyDocument->acknowledged_at,
+            'viewed_at' => $companyDocument->viewed_at,
             'versions' => $companyDocument->versions->map(fn ($v) => [
                 'id' => $v->id, 'version' => $v->version, 'file_name' => $v->file_name, 'size_human' => DocumentAccess::humanSize((int) $v->file_size),
                 'uploaded_by' => $v->uploader?->name, 'uploaded_at' => $v->uploaded_at,
@@ -142,6 +148,8 @@ class CompanyDocumentController extends Controller
         if ($request->filled('version')) {
             abort_unless(DocumentAccess::manages($request->user()), 403);
             $file = $companyDocument->versions()->whereKey($request->integer('version'))->firstOrFail();
+        } elseif ($employee = $request->user()->employee) {
+            $this->recordView($companyDocument, $employee, $request->user()->id);
         }
 
         return DocumentAccess::respond($file->file_path, $file->file_name, $file->mime_type, $request->boolean('inline'));
@@ -154,6 +162,9 @@ class CompanyDocumentController extends Controller
         $employee = $user->employee;
         abort_unless($employee && $companyDocument->isAddressedTo($employee), 403);
         abort_unless($companyDocument->requires_acknowledgement, 422, 'This document does not require acknowledgement.');
+        // You can only confirm you have read what you have opened (the current version).
+        abort_unless($this->currentView($companyDocument, $employee->id) || $companyDocument->acknowledgements()->where('employee_id', $employee->id)->exists(),
+            422, 'Open the document and read it before acknowledging it.');
 
         $ack = CompanyDocumentAcknowledgement::firstOrCreate(
             ['company_document_id' => $companyDocument->id, 'employee_id' => $employee->id],
@@ -172,6 +183,7 @@ class CompanyDocumentController extends Controller
     public function acknowledgements(Request $request, CompanyDocument $companyDocument): JsonResponse
     {
         $acks = $companyDocument->acknowledgements()->get()->keyBy('employee_id');
+        $views = $companyDocument->views()->pluck('viewed_at', 'employee_id');
         $employees = $companyDocument->audienceQuery()->with(['department:id,name', 'branch:id,name'])
             ->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'employee_number', 'department_id', 'branch_id', 'photo_path', 'user_id']);
 
@@ -180,6 +192,7 @@ class CompanyDocumentController extends Controller
             'department' => $e->department?->name, 'branch' => $e->branch?->name, 'photo_url' => $e->photo_url,
             'has_account' => (bool) $e->user_id,
             'acknowledged_at' => $acks[$e->id]->acknowledged_at ?? null,
+            'viewed_at' => $views[$e->id] ?? null,
             'version' => $acks[$e->id]->version ?? null,
         ]);
         $done = $rows->whereNotNull('acknowledged_at')->count();
@@ -217,6 +230,22 @@ class CompanyDocumentController extends Controller
         $users = $doc->audienceQuery()->whereNotNull('user_id')->with('user')->get()->pluck('user')
             ->filter(fn ($u) => $u && $u->is_active && $u->id !== auth()->id());
         Notification::send($users, new CompanyDocumentPublished($doc));
+    }
+
+    /** Records that the employee opened or downloaded the current version of the document. */
+    private function recordView(CompanyDocument $doc, Employee $employee, int $userId): void
+    {
+        if (! $doc->isAddressedTo($employee)) {
+            return;
+        }
+        $view = CompanyDocumentView::firstOrNew(['company_document_id' => $doc->id, 'employee_id' => $employee->id]);
+        $view->first_viewed_at ??= now();
+        $view->forceFill(['user_id' => $userId, 'version' => max((int) $view->version, (int) $doc->version), 'viewed_at' => now()])->save();
+    }
+
+    private function currentView(CompanyDocument $doc, int $employeeId): ?CompanyDocumentView
+    {
+        return $doc->views()->where('employee_id', $employeeId)->where('version', '>=', (int) $doc->version)->first();
     }
 
     private function pendingCount(Employee $employee): int
@@ -261,6 +290,7 @@ class CompanyDocumentController extends Controller
             'audience_ids' => $d->audience_ids ?? [],
             'requires_acknowledgement' => $d->requires_acknowledgement,
             'acknowledged' => (bool) ($d->acknowledged ?? false),
+            'viewed' => (bool) ($d->viewed ?? false),
             'file_name' => $d->file_name,
             'mime_type' => $d->mime_type,
             'size_human' => DocumentAccess::humanSize((int) $d->file_size),

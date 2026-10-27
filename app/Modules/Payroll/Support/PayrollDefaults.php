@@ -75,9 +75,35 @@ class PayrollDefaults
         ];
     }
 
+    /**
+     * Creates missing standard components and fills a missing GL code / role on existing ones. A standard component
+     * is not created when another active component of the company already plays its role (no PEN_EE beside a
+     * company's own pension deduction, no second bonus …), so codes are never duplicated.
+     */
     public static function ensureComponents(int $companyId): void
     {
+        $existing = PayrollComponent::withoutGlobalScopes()->where('company_id', $companyId)->get();
+        $byCode = $existing->keyBy('code');
+        $roles = $existing->where('active', true)->pluck('role')->filter()->flip();
         foreach (self::components() as $c) {
+            if ($row = $byCode->get($c['code'])) {
+                $fill = [];
+                if (blank($row->gl_account) && $c['gl']) {
+                    $fill['gl_account'] = $c['gl'];
+                }
+                if (blank($row->role) && $c['role'] && ! $roles->has($c['role'])) {
+                    $fill['role'] = $c['role'];
+                    $roles[$c['role']] = true;
+                }
+                if ($fill) {
+                    $row->update($fill);
+                }
+
+                continue;
+            }
+            if ($c['role'] && $roles->has($c['role'])) {
+                continue;
+            }
             PayrollComponent::withoutGlobalScopes()->firstOrCreate(
                 ['company_id' => $companyId, 'code' => $c['code']],
                 [

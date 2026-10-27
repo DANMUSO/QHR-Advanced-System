@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { Plus, Pencil, Trash2, Users } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
-import { label } from '@/lib/format';
+import { label, formatMoney } from '@/lib/format';
 import { useUiStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import Badge from '@/components/ui/Badge.vue';
@@ -69,7 +69,7 @@ async function runCalculator() {
 const applyModal = ref({ open: false, structure: null, employee_ids: [], effective_from: '', search: '' });
 const profiles = ref([]);
 async function openApply(row) {
-    applyModal.value = { open: true, structure: row, employee_ids: [], effective_from: new Date().toISOString().slice(0, 8) + '01', search: '' };
+    applyModal.value = { open: true, structure: row, employee_ids: [], effective_from: new Date().toLocaleDateString('en-CA').slice(0, 8) + '01', search: '' };
     try { const { data } = await api.get('/payroll/profiles', { params: { profile: 'set', per_page: 200 } }); profiles.value = data.data ?? []; }
     catch { profiles.value = []; }
 }
@@ -729,7 +729,7 @@ onMounted(async () => {
         <!-- Apply structure -->
         <Modal :open="applyModal.open" :title="`Apply ${applyModal.structure?.name ?? 'structure'}`" size="lg" @close="applyModal.open = false">
             <div class="space-y-4">
-                <p class="text-sm text-slate-500">Links the selected pay profiles to this structure and assigns its components from the effective date (open assignments of the same components are ended the day before). Basic salary is not changed.</p>
+                <p class="text-sm text-slate-500">Links the selected pay profiles to this structure and assigns its components from the effective date (open assignments of the same components are ended the day before). Basic salary is set to the structure basic ({{ formatMoney(applyModal.structure?.basic_salary) }}) and recorded in salary history as "Structure applied". Nothing takes effect before an employee's joining date.</p>
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div><label class="label">Effective from</label><input v-model="applyModal.effective_from" type="date" class="input" /></div>
                     <div><label class="label">Search</label><input v-model="applyModal.search" type="search" class="input" placeholder="Name, number, department" /></div>

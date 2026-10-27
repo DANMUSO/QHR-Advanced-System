@@ -93,6 +93,7 @@ onMounted(load);
             <p v-if="current" class="mt-3 text-xs text-slate-500">Columns: <span class="font-mono">{{ current.columns.join(', ') }}</span></p>
             <ul v-if="type === 'employees'" class="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-500">
                 <li>New employees go through the normal onboarding: probation from their level, an employment contract, supervisor and the “employee hired” automation.</li>
+                <li>New rows are checked like the Add employee form: email, phone, gender, date of birth, national ID, branch, department, position and a next of kin are required, and phone, national ID and KRA PIN must be valid. Invalid rows are skipped and listed with their row number.</li>
                 <li><strong>supervisor</strong>: the supervisor's employee number or email. List supervisors above their team in the file.</li>
                 <li><strong>create_login</strong>: “yes” creates a login and emails an activation link (needs an email address).</li>
                 <li>Rows with an existing employee number update that record. Save Excel files as “CSV UTF-8”. Max 5 MB.</li>

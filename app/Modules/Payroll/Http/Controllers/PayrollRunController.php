@@ -255,6 +255,19 @@ class PayrollRunController extends PayrollController
         return response()->json(['data' => $rows]);
     }
 
+    /** Employee picker for one-off items: everyone the run can pay, including leavers whose exit falls in the period. */
+    public function payableEmployees(PayrollRun $run): JsonResponse
+    {
+        $rows = $this->service->payableEmployees($run)->sortBy(fn ($e) => $e->full_name)
+            ->map(fn (Employee $e) => [
+                'id' => $e->id, 'name' => $e->full_name, 'employee_number' => $e->employee_number, 'status' => $e->status,
+                'exit_date' => in_array($e->status, ['exited', 'transferred'], true) || $e->exitRecord?->status === 'scheduled'
+                    ? $this->service->finalDuesDate($e)?->toDateString() : null,
+            ])->values();
+
+        return response()->json(['data' => $rows]);
+    }
+
     /** @return array{0: array, 1: PayrollComponent} */
     private function validateAdjustment(Request $request, PayrollRun $run): array
     {
@@ -266,6 +279,8 @@ class PayrollRunController extends PayrollController
             'description' => ['nullable', 'string', 'max:255'],
         ]);
         abort_unless(Employee::withoutGlobalScope('company')->where('company_id', $run->company_id)->whereKey($data['employee_id'])->exists(), 422, 'Employee not in this company.');
+        abort_unless($this->service->payableEmployees($run)->contains('id', (int) $data['employee_id']), 422,
+            'This employee is not paid in this run (no pay profile, on hold, or left before the period).');
         PayProfileController::assertNotOwnPay($request, (int) $data['employee_id']);
         $component = PayrollComponent::withoutGlobalScopes()->where('company_id', $run->company_id)->findOrFail($data['component_id']);
         abort_if($component->category === 'employer_contribution', 422, 'Employer contributions cannot be entered as one-off items.');
@@ -366,10 +381,12 @@ class PayrollRunController extends PayrollController
         if (array_key_exists($type, PayrollReportService::PAYMENT_FILES)) {
             abort_unless($run->isLocked(), 422, 'Payment files are available after approval.');
         }
+        // Viewing a report on screen (format=json) is not a download and is not audited.
+        if ($request->query('format') === 'json') {
+            return response()->json($table);
+        }
         activity('payroll')->performedOn($run)->causedBy($request->user())->withProperties(['type' => $type])->log('Payroll export downloaded');
 
-        return $request->query('format') === 'json'
-            ? response()->json($table)
-            : $this->reports->csv($table, ! array_key_exists($type, PayrollReportService::PAYMENT_FILES));
+        return $this->reports->csv($table, ! array_key_exists($type, PayrollReportService::PAYMENT_FILES));
     }
 }

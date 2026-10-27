@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** Record of a scheduled leave job per company and period; makes the jobs idempotent. */
 class LeaveJobRun extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     protected $guarded = ['id'];
 
     protected function casts(): array

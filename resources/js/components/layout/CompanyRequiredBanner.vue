@@ -1,6 +1,6 @@
 <script setup>
 import { watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { Building2 } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { useUiStore } from '@/stores/ui';
@@ -9,13 +9,13 @@ import { useUiStore } from '@/stores/ui';
 const auth = useAuthStore();
 const ui = useUiStore();
 const route = useRoute();
+const router = useRouter();
 
 watch(() => route.path, () => (ui.companyRequired = false));
 
 function choose(e) {
     if (!e.target.value) return;
-    ui.setCompanyScope(e.target.value);
-    window.location.reload();
+    ui.switchCompany(e.target.value, router);
 }
 </script>
 

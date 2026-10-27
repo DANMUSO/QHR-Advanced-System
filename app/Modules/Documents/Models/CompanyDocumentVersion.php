@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** An archived file of a company document (always loaded through its parent). */
 class CompanyDocumentVersion extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     protected $guarded = ['id'];
 
     protected $hidden = ['file_path'];

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { CreditCard, X, FileText, Download, Search } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
 import { useUiStore } from '@/stores/ui';
@@ -56,6 +56,10 @@ async function load() {
 }
 
 function switchTab(t) { tab.value = t; load(); }
+// Search as you type on every tab (debounced), not only on Enter.
+let searchTimer;
+watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(load, 300); });
+function searchNow() { clearTimeout(searchTimer); load(); }
 function toggleAll() { selected.value = allSelected.value ? [] : claims.value.map((c) => c.id); }
 
 function openPay(list) {
@@ -122,7 +126,7 @@ onMounted(load);
         <div class="mb-4 flex flex-wrap items-center gap-3">
             <div class="relative w-full sm:w-72">
                 <Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                <input v-model="search" type="search" class="input !pl-9" placeholder="Search name or reference" @keyup.enter="load" />
+                <input v-model="search" type="search" class="input !pl-9" placeholder="Search name or reference" @keyup.enter="searchNow" />
             </div>
             <template v-if="tab === 'hr_approved' && claims.length">
                 <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">

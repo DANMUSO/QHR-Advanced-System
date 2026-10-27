@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 trait BelongsToCompany
 {
+    use SerializesLocalDates;
+
     public static function bootBelongsToCompany(): void
     {
         static::addGlobalScope('company', function (Builder $builder) {

@@ -17,7 +17,7 @@ const api = axios.create({
 });
 
 let csrfReady = false;
-let handlers = { onUnauthenticated: null, onSecurityRequired: null };
+let handlers = { onUnauthenticated: null, onSecurityRequired: null, onRecordNotFound: null };
 
 export function configureApi(h) {
     handlers = { ...handlers, ...h };
@@ -60,6 +60,10 @@ api.interceptors.response.use(
         }
         if (status === 423 && handlers.onSecurityRequired && error.response.data?.code) {
             handlers.onSecurityRequired(error.response.data.code);
+        }
+        // A record page whose main record is missing (usually: it belongs to another company after a switch).
+        if (status === 404 && (error.config.method ?? 'get') === 'get' && handlers.onRecordNotFound) {
+            handlers.onRecordNotFound(error.config.url ?? '');
         }
         // Super admin viewing "All companies" on a page that works on one company: show the company
         // banner and treat reads as empty instead of failing the page.

@@ -49,6 +49,12 @@ class Plan extends Model
         return $this->belongsTo(Employee::class, 'created_by');
     }
 
+    /** The user who created the plan (set even when they have no employee record). */
+    public function creatorUser(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'created_by_user_id');
+    }
+
     public function focusAreas(): HasMany
     {
         return $this->hasMany(FocusArea::class)->orderBy('sort')->orderBy('id');

@@ -38,6 +38,7 @@ class RequisitionApprovals implements ApprovalProvider
         }
 
         return Requisition::where('status', 'pending_approval')
-            ->when(! $user->hasRole('super-admin'), fn ($q) => $q->where(fn ($w) => $w->whereNull('requested_by')->orWhere('requested_by', '!=', $user->id)));
+            // Never the requester's own — super admins included.
+            ->where(fn ($w) => $w->whereNull('requested_by')->orWhere('requested_by', '!=', $user->id));
     }
 }

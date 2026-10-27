@@ -41,10 +41,28 @@ const columns = [
     { key: 'overridden', label: 'Source' },
 ];
 
+const receiptThreshold = ref(0);
+const receiptError = ref('');
+const savingReceipt = ref(false);
+async function saveReceiptRule() {
+    savingReceipt.value = true;
+    receiptError.value = '';
+    try {
+        const { data } = await api.put('/claims/settings/expenses', { expense_receipt_threshold: receiptThreshold.value === '' ? 0 : receiptThreshold.value });
+        ui.toast(data.message);
+    } catch (e) {
+        receiptError.value = fieldErrors(e).expense_receipt_threshold ?? '';
+        ui.toast(errorMessage(e), 'error');
+    } finally {
+        savingReceipt.value = false;
+    }
+}
+
 async function loadSettings() {
     try {
         const { data } = await api.get('/claims/settings');
         settings.value = data;
+        receiptThreshold.value = data.expense_receipt_threshold ?? 0;
         approvers.value = {
             medical_approver_id: data.medical_approver?.id ?? '',
             finance_approver_id: data.finance_approver?.id ?? '',
@@ -147,6 +165,19 @@ onMounted(() => { loadSettings(); loadLimits(); });
                     Company defaults: {{ formatMoney(settings.defaults.annual_limit) }} a year · {{ formatMoney(settings.defaults.monthly_limit) }} a month (change them in company settings).
                 </p>
                 <button class="btn-primary" :disabled="savingApprovers || !settings" @click="saveApprovers"><Spinner v-if="savingApprovers" /><Save v-else class="size-4" /> Save approvers</button>
+            </div>
+        </div>
+
+        <div class="card mb-6 p-5">
+            <h2 class="mb-1 font-semibold text-slate-900 dark:text-white">Expense receipts</h2>
+            <p class="mb-4 text-sm text-slate-500 dark:text-slate-400">Expense claims above this amount must include a receipt (PDF, JPG or PNG, up to 5 MB). Use 0 to always require one.</p>
+            <div v-if="settings" class="flex flex-wrap items-end gap-3">
+                <div class="w-full sm:w-56">
+                    <label class="label" for="expense-receipt-threshold">Receipt required above</label>
+                    <input id="expense-receipt-threshold" v-model="receiptThreshold" type="number" min="0" step="1" class="input" />
+                    <p v-if="receiptError" class="field-error">{{ receiptError }}</p>
+                </div>
+                <button class="btn-primary" :disabled="savingReceipt" @click="saveReceiptRule"><Spinner v-if="savingReceipt" /><Save v-else class="size-4" /> Save</button>
             </div>
         </div>
 

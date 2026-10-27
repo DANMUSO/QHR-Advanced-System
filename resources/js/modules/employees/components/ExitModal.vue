@@ -18,7 +18,7 @@ const emit = defineEmits(['close', 'done']);
 
 const today = () => new Date().toLocaleDateString('en-CA');
 const picked = ref(null);
-const form = reactive({ exit_date: today(), notice_date: '', reason: '', comments: '', new_supervisor_id: '' });
+const form = reactive({ exit_date: today(), notice_date: '', reason: '', comments: '', new_supervisor_id: '', waive_notice: false });
 const overrides = ref({});
 const reports = ref([]);
 const supervisors = ref([]);
@@ -55,7 +55,7 @@ async function loadContext(emp) {
 
 watch(() => props.open, (o) => {
     if (!o) return;
-    Object.assign(form, { exit_date: today(), notice_date: '', reason: '', comments: '', new_supervisor_id: '', ...(props.prefill ?? {}) });
+    Object.assign(form, { exit_date: today(), notice_date: '', reason: '', comments: '', new_supervisor_id: '', waive_notice: false, ...(props.prefill ?? {}) });
     errors.value = {};
     picked.value = null;
     if (props.employee) loadContext(props.employee);
@@ -74,6 +74,7 @@ async function save() {
             exit_date: form.exit_date,
             notice_date: form.notice_date || null,
             reason: form.reason,
+            waive_notice: form.reason === 'resignation' ? !!form.waive_notice : false,
             comments: form.comments || null,
             new_supervisor_id: form.new_supervisor_id || null,
             reassignments: reassignments.length ? reassignments : null,
@@ -125,6 +126,10 @@ async function save() {
                     </select>
                     <p v-if="errors.reason" class="field-error">{{ errors.reason }}</p>
                 </div>
+                <label v-if="form.reason === 'resignation'" class="flex items-start gap-2 text-sm text-slate-600 sm:col-span-2 dark:text-slate-300">
+                    <input v-model="form.waive_notice" type="checkbox" class="mt-0.5 rounded" />
+                    <span>Waive notice: allow a last working day before the company's resignation notice period ends.</span>
+                </label>
                 <div class="sm:col-span-2">
                     <label class="label">Comments</label>
                     <textarea v-model="form.comments" rows="3" class="input" placeholder="Context for the exit record (visible to HR)" />

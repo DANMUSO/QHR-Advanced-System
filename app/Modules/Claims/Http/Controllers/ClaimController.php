@@ -61,8 +61,8 @@ class ClaimController extends Controller
             ->orderByDesc('claim_date')->orderByDesc('id')
             ->get();
 
-        $years = MedicalClaim::where('employee_id', $employee->id)->selectRaw('DISTINCT YEAR(claim_date) as y')->pluck('y')
-            ->push((int) now()->year)->unique()->sortDesc()->values();
+        $years = MedicalClaim::where('employee_id', $employee->id)->distinct()->pluck('claim_date')
+            ->map(fn ($d) => (int) substr((string) $d, 0, 4))->push((int) now()->year)->unique()->sortDesc()->values();
 
         return response()->json([
             'data' => $claims->map(fn ($c) => $this->presenter->row($c, $request->user()))->values(),

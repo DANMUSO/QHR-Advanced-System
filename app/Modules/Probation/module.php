@@ -36,8 +36,24 @@ return [
             });
         });
 
+        // A leaver's (or the old record of a transferred employee's) undecided review is closed so it leaves every queue.
+        \Illuminate\Support\Facades\Event::listen(\App\Modules\Employees\Events\EmployeeExited::class, function ($event) {
+            SideEffects::run('probation: close review of leaver', fn () => app(ProbationRouting::class)->closeForEmployee($event->employee->id, 'employee exited'));
+        });
+        \Illuminate\Support\Facades\Event::listen(EmployeeTransferred::class, function ($event) {
+            SideEffects::run('probation: close review of transferred record', fn () => app(ProbationRouting::class)->closeForEmployee($event->previous->id, 'employee transferred'));
+        });
+
         // probation_months / date_of_joining edits move the employee's end date: keep the open review in step.
+        // A new supervisor may make a skipped review stage reachable again: reopen it.
         Employee::saved(function (Employee $employee) {
+            if ($employee->wasChanged(['primary_supervisor_id', 'secondary_supervisor_id']) && in_array($employee->status, ['active', 'suspended'], true)) {
+                SideEffects::run('probation: reopen skipped stages', function () use ($employee) {
+                    $routing = app(ProbationRouting::class);
+                    ProbationReview::withoutGlobalScopes()->where('employee_id', $employee->id)->whereIn('status', ProbationRouting::UNDECIDED)->get()
+                        ->each(fn (ProbationReview $r) => $routing->reopenSkipped($r) || $routing->assign($r));
+                });
+            }
             if ($employee->wasChanged('probation_end_date') && $employee->probation_end_date) {
                 ProbationReview::withoutGlobalScopes()->where('employee_id', $employee->id)
                     ->whereNotIn('status', ProbationRouting::FINAL)

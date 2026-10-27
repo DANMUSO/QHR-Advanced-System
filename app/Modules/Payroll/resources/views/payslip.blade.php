@@ -56,7 +56,7 @@
     <tr><td class="k">Position</td><td class="v">{{ $p['employee']['position'] ?? '—' }}</td><td class="k">Department</td><td class="v">{{ $p['employee']['department'] ?? '—' }}</td></tr>
     <tr><td class="k">KRA PIN</td><td class="v">{{ $p['employee']['kra_pin'] ?? '—' }}</td><td class="k">NSSF No.</td><td class="v">{{ $p['employee']['nssf_number'] ?? '—' }}</td></tr>
     <tr><td class="k">SHIF No.</td><td class="v">{{ $p['employee']['shif_number'] ?? '—' }}</td><td class="k">Paid via</td><td class="v">{{ $p['payment']['label'] }}</td></tr>
-    <tr><td class="k">Days worked</td><td class="v">{{ rtrim(rtrim(number_format($p['days']['worked'], 2), '0'), '.') }} / {{ rtrim(rtrim(number_format($p['days']['in_period'], 2), '0'), '.') }}</td><td class="k">Working days</td><td class="v">{{ rtrim(rtrim(number_format($p['days']['working_days'], 2), '0'), '.') }}</td></tr>
+    <tr><td class="k">Days worked</td><td class="v">{{ rtrim(rtrim(number_format($p['days']['worked'], 2), '0'), '.') }} / {{ rtrim(rtrim(number_format($p['days']['working_days'], 2), '0'), '.') }} working days</td><td class="k">Calendar days</td><td class="v">{{ rtrim(rtrim(number_format($p['days']['in_period'], 2), '0'), '.') }}</td></tr>
 </table>
 
 <table class="cols"><tbody><tr>

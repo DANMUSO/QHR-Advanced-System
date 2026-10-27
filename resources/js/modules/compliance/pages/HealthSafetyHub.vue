@@ -26,6 +26,11 @@ const modal = ref(false);
 const editing = ref(null);
 const form = ref({});
 const errors = ref({});
+// Hazards and incidents are recorded after the fact: no future dates (the server rejects them too).
+const maxNow = () => {
+    const d = new Date();
+    return `${d.toLocaleDateString('en-CA')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
 const saving = ref(false);
 const confirm = ref({ open: false, row: null, loading: false });
 
@@ -186,9 +191,9 @@ onMounted(load);
                 </div>
                 <div v-if="tab === 'incidents'" class="grid gap-4 sm:grid-cols-2">
                     <div><label class="label">Location</label><input v-model="form.location" type="text" class="input" /></div>
-                    <div><label class="label">Date & Time</label><input v-model="form.incident_date" type="datetime-local" class="input" /></div>
+                    <div><label class="label">Date & Time</label><input v-model="form.incident_date" type="datetime-local" class="input" :max="maxNow()" /><p v-if="errors.incident_date" class="field-error">{{ errors.incident_date }}</p></div>
                 </div>
-                <div v-else><label class="label">Date</label><input v-model="form.reported_date" type="date" class="input" /></div>
+                <div v-else><label class="label">Date</label><input v-model="form.reported_date" type="date" class="input" :max="maxNow().slice(0, 10)" /><p v-if="errors.reported_date" class="field-error">{{ errors.reported_date }}</p></div>
                 <div><label class="label">Description</label><textarea v-model="form.description" rows="3" class="input" /></div>
                 <template v-if="editing">
                     <div>

@@ -51,6 +51,7 @@ class Presenter
             'overtime_minutes' => $d->overtime_minutes,
             'overtime_formatted' => static::duration($d->overtime_minutes),
             'status' => $d->status,
+            'status_label' => \App\Modules\Attendance\Services\HistoryBuilder::statusLabel($d->status),
             'computed_status' => $d->computed_status,
             'override_status' => $d->override_status,
             'override_reason' => $d->override_reason,

@@ -95,7 +95,7 @@ onMounted(() => { loadRequests(); loadHandoverCount(); });
                             <span class="truncate text-xs font-medium text-slate-500">{{ b.name }}</span>
                         </div>
                         <p class="text-2xl font-bold text-slate-900 dark:text-white">{{ b.projected ?? '∞' }}</p>
-                        <p class="text-xs text-slate-400">{{ b.taken }} taken · {{ b.pending }} pending</p>
+                        <p class="text-xs text-slate-400">{{ b.taken }} taken<template v-if="b.booked"> · {{ b.booked }} booked</template> · {{ b.pending }} pending</p>
                     </div>
                 </div>
                 <div class="mb-4 flex items-center gap-3">

@@ -154,9 +154,16 @@ class OrganizationCoreTest extends TestCase
         $dept->company_id = $this->company->id;
         $dept->save();
 
-        $csv = "employee_number,first_name,last_name,email,department,level,date_of_joining,contract_type,supervisor,create_login\n"
-            .'EMP-9001,Jane,Muthoni,jane.m@example.test,Finance,Mid-level,'.now()->subMonth()->toDateString().",permanent,SUP-1,yes\n"
-            ."EMP-9002,No,Email,,Finance,,,permanent,,yes\n";
+        // New rows are checked with the Add employee rules (QA round 5): personal, statutory and employment fields plus a next of kin.
+        $branch = new \App\Models\Branch(['name' => 'HQ']);
+        $branch->company_id = $this->company->id;
+        $branch->save();
+        $position = new \App\Models\Position(['title' => 'Accountant']);
+        $position->company_id = $this->company->id;
+        $position->save();
+        $csv = "employee_number,first_name,last_name,email,phone,gender,date_of_birth,national_id,branch,department,position,level,date_of_joining,contract_type,supervisor,create_login,next_of_kin_name,next_of_kin_phone\n"
+            .'EMP-9001,Jane,Muthoni,jane.m@example.test,0712009001,female,1990-05-05,29001001,HQ,Finance,Accountant,Mid-level,'.now()->subMonth()->toDateString().",permanent,SUP-1,yes,Kin Muthoni,0722009001\n"
+            ."EMP-9002,No,Email,,0712009002,female,1990-05-05,29001002,HQ,Finance,Accountant,,,permanent,,yes,Kin Email,0722009002\n";
         $file = UploadedFile::fake()->createWithContent('employees.csv', $csv);
 
         $res = $this->actingAs($hr)->post('/api/organization/imports', ['type' => 'employees', 'file' => $file], ['Accept' => 'application/json'])

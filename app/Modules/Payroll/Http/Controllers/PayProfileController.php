@@ -26,6 +26,21 @@ class PayProfileController extends PayrollController
         abort_if(Employee::withoutGlobalScopes()->whereKey($employeeId)->where('user_id', $request->user()->id)->exists(), 403,
             'Conflict of interest: you cannot change your own pay. Ask another payroll officer.');
     }
+    /** Salary and component dates can never precede the employee's joining date. */
+    public static function joiningDateRule(Employee $employee): array
+    {
+        $joined = $employee->date_of_joining?->toDateString();
+
+        return $joined ? ['after_or_equal:'.$joined] : [];
+    }
+
+    public static function joiningDateMessages(Employee $employee, string ...$fields): array
+    {
+        $joined = $employee->date_of_joining?->format('j M Y');
+
+        return collect($fields)->mapWithKeys(fn ($f) => ["{$f}.after_or_equal" => "The date cannot be before the employee's joining date ({$joined})."])->all();
+    }
+
     /** Employees with their pay profile summary. */
     public function index(Request $request): JsonResponse
     {
@@ -127,8 +142,8 @@ class PayProfileController extends PayrollController
             'notes' => ['nullable', 'string', 'max:1000'],
             // initial salary when creating a profile
             'basic_salary' => ['nullable', 'numeric', 'min:0', 'max:100000000'],
-            'effective_date' => ['nullable', 'date'],
-        ], ['mpesa_phone.regex' => 'Enter a Kenyan mobile number, e.g. 0712345678.']);
+            'effective_date' => ['nullable', 'date', ...self::joiningDateRule($employee)],
+        ], ['mpesa_phone.regex' => 'Enter a Kenyan mobile number, e.g. 0712345678.'] + self::joiningDateMessages($employee, 'effective_date'));
 
         $profile = PayrollPayProfile::where('employee_id', $employee->id)->first();
         $creating = ! $profile;
@@ -176,10 +191,10 @@ class PayProfileController extends PayrollController
         self::assertNotOwnPay($request, $employee->id);
         $data = $request->validate([
             'basic_salary' => ['required', 'numeric', 'min:0', 'max:100000000'],
-            'effective_date' => ['required', 'date'],
+            'effective_date' => ['required', 'date', ...self::joiningDateRule($employee)],
             'reason' => ['required', Rule::in(array_keys(PayrollSalaryHistory::REASONS))],
             'notes' => ['nullable', 'string', 'max:500'],
-        ]);
+        ], self::joiningDateMessages($employee, 'effective_date'));
         $profile = PayrollPayProfile::where('employee_id', $employee->id)->first();
         abort_unless($profile, 422, 'Create the pay profile first.');
         $this->applySalaryChange($employee, $profile, $data, $request->user()->id);
@@ -192,9 +207,11 @@ class PayProfileController extends PayrollController
         DB::transaction(function () use ($employee, $profile, $data, $userId) {
             $prev = PayrollSalaryHistory::where('employee_id', $employee->id)->whereDate('effective_date', '<=', $data['effective_date'])
                 ->orderByDesc('effective_date')->orderByDesc('id')->value('basic_salary') ?? $profile->basic_salary;
+            // The employee's first salary (hired without one) is the initial salary, whatever reason was picked.
+            $first = ! PayrollSalaryHistory::where('employee_id', $employee->id)->where('basic_salary', '>', 0)->exists();
             PayrollSalaryHistory::create([
-                'company_id' => $employee->company_id, 'employee_id' => $employee->id, 'previous_salary' => $prev,
-                'basic_salary' => $data['basic_salary'], 'effective_date' => $data['effective_date'], 'reason' => $data['reason'],
+                'company_id' => $employee->company_id, 'employee_id' => $employee->id, 'previous_salary' => $first ? null : $prev,
+                'basic_salary' => $data['basic_salary'], 'effective_date' => $data['effective_date'], 'reason' => $first ? 'initial' : $data['reason'],
                 'notes' => $data['notes'] ?? null, 'approved_by' => $userId, 'created_by' => $userId,
             ]);
             $current = PayrollSalaryHistory::where('employee_id', $employee->id)->whereDate('effective_date', '<=', now()->toDateString())
@@ -241,10 +258,10 @@ class PayProfileController extends PayrollController
             'component_id' => ['required', 'integer'],
             'amount' => ['nullable', 'numeric', 'min:0', 'max:100000000'],
             'rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'effective_from' => ['required', 'date'],
+            'effective_from' => ['required', 'date', ...self::joiningDateRule($employee)],
             'effective_to' => ['nullable', 'date', 'after_or_equal:effective_from'],
             'notes' => ['nullable', 'string', 'max:500'],
-        ]);
+        ], self::joiningDateMessages($employee, 'effective_from'));
         $component = PayrollComponent::where('company_id', $employee->company_id)->findOrFail($data['component_id']);
         if ($component->calculation === 'fixed' && $data['amount'] === null && $component->default_amount === null) {
             abort(422, 'Enter an amount for this component.');
@@ -290,6 +307,8 @@ class PayProfileController extends PayrollController
             }
             if (! $date) {
                 $errors[] = 'Invalid effective date';
+            } elseif ($employee?->date_of_joining && $date < $employee->date_of_joining->toDateString()) {
+                $errors[] = 'Effective date is before the joining date ('.$employee->date_of_joining->toDateString().')';
             }
             if (! array_key_exists($reason, PayrollSalaryHistory::REASONS)) {
                 $errors[] = 'Reason must be promotion, increment, adjustment or initial';

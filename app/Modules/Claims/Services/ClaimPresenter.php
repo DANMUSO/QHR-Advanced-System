@@ -36,6 +36,9 @@ class ClaimPresenter
             'total_amount' => (float) $c->total_amount,
             'approved_amount' => $c->approved_amount !== null ? (float) $c->approved_amount : null,
             'payable_amount' => $c->effectiveAmount(),
+            'paid_amount' => $c->status === MedicalClaim::PAID ? (float) $c->effectiveAmount() : null,
+            // What the employee should read: "3,500 claimed · 3,000 paid" when less than claimed was approved / paid.
+            'amount_summary' => self::amountSummary($c),
             'status' => $c->status,
             'status_label' => $c->statusLabel(),
             'hr_status' => match ($c->status) {
@@ -92,5 +95,18 @@ class ClaimPresenter
             ])->values(),
             'balance' => $balance,
         ];
+    }
+
+    /** "3,500 claimed · 3,000 paid" (or "approved") when the approved amount differs from the claim; else the amount. */
+    public static function amountSummary(MedicalClaim $c): string
+    {
+        $fmt = fn (float $v) => number_format($v, fmod($v, 1.0) ? 2 : 0);
+        $claimed = (float) $c->total_amount;
+        $approved = $c->approved_amount !== null ? (float) $c->approved_amount : null;
+        if (in_array($c->status, [MedicalClaim::SUBMITTED, MedicalClaim::HR_REJECTED, MedicalClaim::CANCELLED], true) || $approved === null || abs($approved - $claimed) < 0.005) {
+            return $fmt($claimed).($c->status === MedicalClaim::PAID ? ' paid' : '');
+        }
+
+        return $fmt($claimed).' claimed · '.$fmt($approved).($c->status === MedicalClaim::PAID ? ' paid' : ' approved');
     }
 }

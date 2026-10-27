@@ -37,7 +37,6 @@ class PayrollDataSeeder extends Seeder
 
         $extra = [
             ['code' => 'MEDICAL', 'name' => 'Medical allowance', 'category' => 'earning', 'calculation' => 'fixed', 'default_amount' => 3000, 'taxable' => true, 'recurring' => true, 'sort_order' => 14],
-            ['code' => 'PERF_BONUS', 'name' => 'Performance bonus', 'category' => 'earning', 'calculation' => 'fixed', 'taxable' => true, 'recurring' => false, 'sort_order' => 15],
         ];
         foreach ($extra as $c) {
             PayrollComponent::withoutGlobalScopes()->firstOrCreate(
@@ -46,7 +45,8 @@ class PayrollDataSeeder extends Seeder
             );
         }
 
-        // Older demo data created duplicates of built-in items (basic is computed by the engine; pension uses PEN_EE / PEN_ER).
+        // Older demo data created duplicates of built-in items (basic is computed by the engine; pension uses PEN_EE / PEN_ER;
+        // bonuses use the standard BONUS component, so no PERF_BONUS is created).
         PayrollComponent::withoutGlobalScopes()->where('company_id', $company->id)
             ->whereIn('code', ['BASIC', 'PENSION_E', 'PENSION_ER'])->whereNull('role')->update(['active' => false]);
     }

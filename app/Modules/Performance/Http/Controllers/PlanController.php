@@ -30,7 +30,7 @@ class PlanController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $query = Plan::with(['cycle:id,name,status', 'position:id,title', 'employee:id,first_name,last_name', 'creator:id,first_name,last_name'])
+        $query = Plan::with(['cycle:id,name,status,start_date,end_date', 'position:id,title', 'employee:id,first_name,last_name', 'creator:id,first_name,last_name', 'creatorUser:id,name'])
             ->withCount(['focusAreas', 'kpis'])->withSum('objectives as total_weight', 'weight')
             ->when($request->filled('cycle_id'), fn ($q) => $q->where('cycle_id', $request->integer('cycle_id')))
             ->when($request->filled('position_id'), fn ($q) => $q->where('position_id', $request->integer('position_id')))
@@ -193,6 +193,7 @@ class PlanController extends Controller
         $plan = $this->planOf($objective->plan_id);
         $this->authorizeEdit($request, $plan);
         $data = $this->validatedKpi($request, $plan->company_id);
+        $plan->cycle?->assertDateWithin($data['due_date'] ?? null);
         $questions = $data['question_ids'] ?? [];
         unset($data['question_ids']);
         $kpi = new Kpi($data + ['plan_id' => $plan->id, 'objective_id' => $objective->id, 'created_by' => $request->user()->employee?->id]);
@@ -208,6 +209,7 @@ class PlanController extends Controller
         $plan = $this->planOf($kpi->plan_id);
         $this->authorizeEdit($request, $plan);
         $data = $this->validatedKpi($request, $plan->company_id, $kpi);
+        $plan->cycle?->assertDateWithin($data['due_date'] ?? null);
         $questions = $data['question_ids'] ?? null;
         unset($data['question_ids']);
         $assigned = $kpi->goals()->exists();
@@ -255,11 +257,12 @@ class PlanController extends Controller
     private function planRow(Plan $p): array
     {
         return [
-            'id' => $p->id, 'name' => $p->name, 'cycle_id' => $p->cycle_id, 'cycle' => $p->cycle?->only(['id', 'name', 'status']),
+            'id' => $p->id, 'name' => $p->name, 'cycle_id' => $p->cycle_id, 'cycle' => $p->cycle ? ['id' => $p->cycle->id, 'name' => $p->cycle->name, 'status' => $p->cycle->status, 'start_date' => $p->cycle->start_date?->toDateString(), 'end_date' => $p->cycle->end_date?->toDateString()] : null,
             'position_id' => $p->position_id, 'position' => $p->position?->title,
             'employee_id' => $p->employee_id, 'employee' => $p->employee?->full_name,
             'start_date' => $p->start_date?->toDateString(),
-            'created_by' => $p->creator?->full_name, 'created_by_id' => $p->created_by,
+            // An admin without an employee record is recorded by user id.
+            'created_by' => $p->creator?->full_name ?? $p->creatorUser?->name, 'created_by_id' => $p->created_by,
             'focus_areas_count' => $p->focus_areas_count ?? $p->focusAreas()->count(),
             'kpis_count' => $p->kpis_count ?? $p->kpis()->count(),
             'total_weight' => round((float) ($p->total_weight ?? $p->totalWeight()), 2),

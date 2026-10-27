@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SupportReply extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     protected $table = 'org_support_replies';
 
     protected $guarded = ['id'];

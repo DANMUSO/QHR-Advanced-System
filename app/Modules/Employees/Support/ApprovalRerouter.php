@@ -85,8 +85,10 @@ class ApprovalRerouter
 
         if (class_exists(ProbationReview::class)) {
             $routing = app(ProbationRouting::class);
-            $counts['probation'] = $this->each($only(ProbationReview::withoutGlobalScopes()->whereIn('status', ProbationRouting::OPEN), ['primary_approver_id']),
-                fn (ProbationReview $review) => $dry ? false : $routing->assign($review));
+            // Nightly runs also reopen stages skipped earlier (nobody could act then) once someone can, even at the HR step.
+            $statuses = $approverId ? ProbationRouting::OPEN : ProbationRouting::UNDECIDED;
+            $counts['probation'] = $this->each($only(ProbationReview::withoutGlobalScopes()->whereIn('status', $statuses), ['primary_approver_id']),
+                fn (ProbationReview $review) => $dry ? false : ($routing->reopenSkipped($review) || $routing->assign($review)));
         }
 
         foreach (self::SIMPLE as $model => $statuses) {

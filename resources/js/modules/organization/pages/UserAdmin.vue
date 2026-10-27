@@ -1,8 +1,8 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Users, ShieldCheck, Lock, UserX, MailQuestion, Search, KeyRound, ShieldAlert, Pencil, Check, Send, Link2, MailWarning } from 'lucide-vue-next';
-import api, { errorMessage } from '@/lib/api';
+import { Users, ShieldCheck, Lock, UserX, MailQuestion, Search, KeyRound, ShieldAlert, Pencil, Check, Send, Link2, MailWarning, UserPlus } from 'lucide-vue-next';
+import api, { errorMessage, fieldErrors } from '@/lib/api';
 import swal from '@/lib/swal';
 import { resendActivation, copyActivationLink } from '@/lib/activation';
 import { timeAgo, formatDateTime, titleCase } from '@/lib/format';
@@ -123,12 +123,40 @@ async function saveRole() {
     }
 }
 
+// ---- standalone user (super admin): a login without an employee record, e.g. an external accountant ----
+const creator = reactive({ open: false, form: {}, errors: {}, saving: false });
+function openCreate() {
+    Object.assign(creator, { open: true, errors: {}, saving: false, form: { name: '', email: '', company_id: ui.companyScope || '', roles: [], send_activation: true } });
+}
+function toggleCreateRole(r) {
+    const i = creator.form.roles.indexOf(r);
+    if (i === -1) creator.form.roles.push(r);
+    else creator.form.roles.splice(i, 1);
+}
+async function createUser() {
+    creator.saving = true;
+    creator.errors = {};
+    try {
+        const { data } = await api.post('/admin/users', { ...creator.form, company_id: creator.form.company_id || null });
+        swal.toast(data.message);
+        creator.open = false;
+        router.push(`/organization/users/${data.data.id}`);
+    } catch (e) {
+        creator.errors = fieldErrors(e);
+        if (!Object.keys(creator.errors).length) swal.toast(errorMessage(e), 'error');
+    } finally {
+        creator.saving = false;
+    }
+}
+
 onMounted(() => { loadUsers(); if (tab.value === 'roles') loadRoles(); });
 </script>
 
 <template>
     <div>
-        <PageHeader title="Users & roles" subtitle="Accounts, sign-in security, roles and permissions." />
+        <PageHeader title="Users & roles" subtitle="Accounts, sign-in security, roles and permissions.">
+            <button v-if="result.can_create_users" class="btn-primary" @click="openCreate"><UserPlus class="size-4" /> New user</button>
+        </PageHeader>
         <Tabs :tabs="tabs" :model-value="tab" @update:model-value="switchTab" />
 
         <template v-if="tab === 'users'">
@@ -185,7 +213,7 @@ onMounted(() => { loadUsers(); if (tab.value === 'roles') loadRoles(); });
                         <Avatar :name="row.name" :src="row.employee?.photo_url" size="sm" />
                         <div class="min-w-0">
                             <p class="truncate font-medium text-slate-900 dark:text-white">{{ row.name }}</p>
-                            <p class="truncate text-xs text-slate-500">{{ row.email }}</p>
+                            <p class="truncate text-xs text-slate-500">{{ row.email }}<span v-if="!row.employee" class="ml-1 text-slate-400">· no employee record</span></p>
                         </div>
                     </div>
                 </template>
@@ -206,7 +234,7 @@ onMounted(() => { loadUsers(); if (tab.value === 'roles') loadRoles(); });
                     <KeyRound v-if="row.must_change_password" class="ml-1 inline size-3.5 text-amber-500" title="Must change password" />
                 </template>
                 <template #actions="{ row }">
-                    <template v-if="row.status === 'not_activated'">
+                    <template v-if="row.status === 'not_activated' && row.can_send_activation !== false">
                         <button class="btn-secondary !px-2.5 !py-1.5 text-xs" :disabled="busy === row.id" title="Email a new activation link" @click="resend(row)"><Send class="size-3.5" /> Resend activation</button>
                         <button v-if="result.can_copy_activation_link" class="btn-ghost !px-2.5 !py-1.5 text-xs" :disabled="busy === row.id" title="Local development only" @click="copyLink(row)"><Link2 class="size-3.5" /> Copy link</button>
                     </template>
@@ -252,6 +280,48 @@ onMounted(() => { loadUsers(); if (tab.value === 'roles') loadRoles(); });
             <template #footer>
                 <button class="btn-secondary" @click="roleEditor.open = false">Cancel</button>
                 <button class="btn-primary" :disabled="roleEditor.saving" @click="saveRole"><Spinner v-if="roleEditor.saving" /> Save role</button>
+            </template>
+        </Modal>
+
+        <Modal :open="creator.open" title="New user without an employee record" size="lg" @close="creator.open = false">
+            <p class="mb-4 text-sm text-slate-500">For people who sign in only to approve or review, such as an external accountant or a director. Staff accounts are created from the employee record instead.</p>
+            <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                    <label class="label" for="nu-name">Full name <span class="text-rose-500">*</span></label>
+                    <input id="nu-name" v-model="creator.form.name" class="input" maxlength="120" />
+                    <p v-if="creator.errors.name" class="field-error">{{ creator.errors.name }}</p>
+                </div>
+                <div>
+                    <label class="label" for="nu-email">Email <span class="text-rose-500">*</span></label>
+                    <input id="nu-email" v-model="creator.form.email" type="email" class="input" maxlength="190" />
+                    <p v-if="creator.errors.email" class="field-error">{{ creator.errors.email }}</p>
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="label" for="nu-company">Company</label>
+                    <select id="nu-company" v-model="creator.form.company_id" class="input">
+                        <option value="">None (platform-wide)</option>
+                        <option v-for="c in auth.user?.companies ?? []" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+                    </select>
+                    <p class="mt-1 text-xs text-slate-500">Approvers such as Finance act on the company chosen here.</p>
+                    <p v-if="creator.errors.company_id" class="field-error">{{ creator.errors.company_id }}</p>
+                </div>
+                <div class="sm:col-span-2">
+                    <p class="label">Roles <span class="text-rose-500">*</span></p>
+                    <div class="grid gap-2 sm:grid-cols-2">
+                        <label v-for="r in result.roles" :key="r" class="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 p-2.5 text-sm dark:border-slate-700">
+                            <input type="checkbox" class="rounded text-brand-600" :checked="creator.form.roles.includes(r)" @change="toggleCreateRole(r)" />
+                            {{ titleCase(r) }}
+                        </label>
+                    </div>
+                    <p v-if="creator.errors.roles" class="field-error">{{ creator.errors.roles }}</p>
+                </div>
+                <label class="flex items-center gap-2 text-sm sm:col-span-2">
+                    <input v-model="creator.form.send_activation" type="checkbox" class="rounded text-brand-600" /> Email an activation link now
+                </label>
+            </div>
+            <template #footer>
+                <button class="btn-secondary" @click="creator.open = false">Cancel</button>
+                <button class="btn-primary" :disabled="creator.saving" @click="createUser"><Spinner v-if="creator.saving" /> Create user</button>
             </template>
         </Modal>
     </div>

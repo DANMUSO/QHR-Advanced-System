@@ -20,6 +20,10 @@ class AppServiceProvider extends ServiceProvider
         // Actions taken during "Sign in as" are attributed to the admin as well as the impersonated account.
         \App\Support\ActivityCauser::register();
 
+        // JSON dates carry the company's local offset (2026-10-27T00:00:00+03:00) instead of UTC "Z". The default
+        // UTC form turned a Nairobi date into the previous day anywhere the UI reads the date part.
+        \Illuminate\Support\Facades\Date::serializeUsing(fn ($date) => $date->format('Y-m-d\TH:i:sP'));
+
         // Company-wide password policy. Breached-password checks run in production (k-anonymity lookup).
         Password::defaults(function () {
             $rule = Password::min(10)->letters()->mixedCase()->numbers()->symbols();

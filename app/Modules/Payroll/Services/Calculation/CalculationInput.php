@@ -29,6 +29,9 @@ final class CalculationInput
 
     public float $workingDays = 22;
 
+    /** Working days the employee was employed within the period (joiners / leavers); null = count Mon–Fri. */
+    public ?float $employedWorkingDays = null;
+
     /** Divisor for the hourly overtime rate (hours_per_day × working days, or 225). */
     public float $monthlyHours = 225;
 

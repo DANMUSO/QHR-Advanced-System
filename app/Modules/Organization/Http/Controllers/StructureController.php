@@ -211,7 +211,7 @@ class StructureController extends Controller
             ],
             'positions' => [
                 'title' => ['required', 'string', 'max:120', $unique('positions', 'title')],
-                'employment_level_id' => ['nullable', 'integer', $inCompany('employment_levels')],
+                'employment_level_id' => ['required', 'integer', $inCompany('employment_levels')],
                 'is_supervisor' => ['boolean'],
             ],
             'levels' => [
@@ -239,6 +239,7 @@ class StructureController extends Controller
         $data = $request->validate($rules, [
             'head_employee_id.exists' => 'Choose an employee from this company.',
             'employment_level_id.exists' => 'Choose a level from this company.',
+            'employment_level_id.required' => 'Choose the employment level for this position (add one under Levels first if none exist).',
             'name.unique' => 'A record with this name already exists.',
             'title.unique' => 'A position with this title already exists.',
             'phone.regex' => 'Enter a valid phone number, e.g. 0712345678 or +254712345678.',

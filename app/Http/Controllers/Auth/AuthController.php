@@ -62,6 +62,7 @@ class AuthController extends Controller
         }
 
         if (! $user->is_active) {
+            $this->recorder->record('failed', $user, $data['email']);
             throw ValidationException::withMessages(['email' => 'Your account has been disabled. Contact HR.'])->status(403);
         }
 
@@ -113,7 +114,8 @@ class AuthController extends Controller
     public function logout(Request $request): JsonResponse
     {
         if ($user = $request->user()) {
-            $this->recorder->record('logout', $user);
+            $impersonator = $request->hasSession() && ($id = $request->session()->get('impersonator_id')) ? User::find($id) : null;
+            $this->recorder->record('logout', $user, null, $impersonator);
         }
         Auth::guard('web')->logout();
         $request->session()->invalidate();

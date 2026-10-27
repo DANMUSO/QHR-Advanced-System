@@ -10,6 +10,7 @@ use App\Models\Holiday;
 use App\Models\Position;
 use App\Modules\Employees\Events\EmployeeHired;
 use App\Modules\Employees\Services\EmployeeService;
+use App\Modules\Employees\Support\EmployeeRules;
 use App\Modules\Employees\Support\SideEffects;
 use App\Modules\Organization\Models\DataImport;
 use Carbon\Carbon;
@@ -28,8 +29,8 @@ class DataImporter
     public const TYPES = [
         'employees' => [
             'label' => 'Employees',
-            'columns' => ['employee_number', 'first_name', 'last_name', 'other_names', 'email', 'phone', 'gender', 'date_of_birth', 'national_id', 'kra_pin', 'nssf_number', 'shif_number', 'branch', 'department', 'position', 'level', 'date_of_joining', 'contract_type', 'contract_end_date', 'supervisor', 'create_login'],
-            'example' => ['EMP-9001', 'Jane', 'Muthoni', '', 'jane.muthoni@example.co.ke', '+254712345678', 'female', '1992-04-18', '28765432', 'A012345678Z', '2001234567', 'SH1234567', 'Nairobi HQ', 'Finance', 'Accountant', 'Mid-level', '2024-02-01', 'permanent', '', 'EMP-0001', 'yes'],
+            'columns' => ['employee_number', 'first_name', 'last_name', 'other_names', 'email', 'phone', 'gender', 'date_of_birth', 'national_id', 'kra_pin', 'nssf_number', 'shif_number', 'branch', 'department', 'position', 'level', 'date_of_joining', 'contract_type', 'contract_end_date', 'supervisor', 'create_login', 'next_of_kin_name', 'next_of_kin_relationship', 'next_of_kin_phone'],
+            'example' => ['EMP-9001', 'Jane', 'Muthoni', '', 'jane.muthoni@example.co.ke', '+254712345678', 'female', '1992-04-18', '28765432', 'A012345678Z', '2001234567', 'SH1234567', 'Nairobi HQ', 'Finance', 'Accountant', 'Mid-level', '2024-02-01', 'permanent', '', 'EMP-0001', 'yes', 'Peter Muthoni', 'father', '+254722000111'],
         ],
         'departments' => ['label' => 'Departments', 'columns' => ['name', 'email', 'phone'], 'example' => ['Internal Audit', 'audit@example.co.ke', '+254700111222']],
         'branches' => ['label' => 'Branches', 'columns' => ['name', 'location', 'address', 'email', 'phone'], 'example' => ['Eldoret', 'Eldoret Town', 'P.O. Box 12-30100', 'eldoret@example.co.ke', '+254700333444']],
@@ -49,13 +50,14 @@ class DataImporter
     {
         $cols = self::TYPES[$type]['columns'];
         $rows = match ($type) {
-            'employees' => Employee::withoutGlobalScope('company')->with(['branch', 'department', 'position', 'level'])
+            'employees' => Employee::withoutGlobalScope('company')->with(['branch', 'department', 'position', 'level', 'nextOfKin'])
                 ->where('company_id', $companyId)->orderBy('employee_number')->get()
                 ->map(fn ($e) => [
                     $e->employee_number, $e->first_name, $e->last_name, $e->other_names, $e->email, $e->phone, $e->gender,
                     $e->date_of_birth?->toDateString(), $e->national_id, $e->kra_pin, $e->nssf_number, $e->shif_number,
                     $e->branch?->name, $e->department?->name, $e->position?->title, $e->level?->name,
-                    $e->date_of_joining?->toDateString(), $e->contract_type, $e->contract_end_date?->toDateString(),
+                    $e->date_of_joining?->toDateString(), $e->contract_type, $e->contract_end_date?->toDateString(), '', '',
+                    $e->nextOfKin->first()?->name, $e->nextOfKin->first()?->relationship, $e->nextOfKin->first()?->phone,
                 ]),
             'departments' => Department::withoutGlobalScope('company')->where('company_id', $companyId)->orderBy('name')->get()->map(fn ($d) => [$d->name, $d->email, $d->phone]),
             'branches' => Branch::withoutGlobalScope('company')->where('company_id', $companyId)->orderBy('name')->get()->map(fn ($b) => [$b->name, $b->location, $b->address, $b->email, $b->phone]),
@@ -164,14 +166,10 @@ class DataImporter
                 break;
 
             case 'employees':
-                $this->validate($row, [
-                    'employee_number' => 'required|max:40', 'first_name' => 'required|max:120', 'last_name' => 'required|max:120',
-                    'email' => 'nullable|email', 'gender' => 'nullable|in:male,female,other', 'date_of_birth' => 'nullable|date|before:today',
-                    'date_of_joining' => 'nullable|date', 'contract_type' => 'nullable|in:permanent,contract,casual,intern', 'contract_end_date' => 'nullable|date',
-                ]);
+                $this->validate($row, ['employee_number' => 'required|max:40']);
                 $attrs = [
-                    'first_name' => $row['first_name'], 'last_name' => $row['last_name'], 'other_names' => $row['other_names'] ?? null ?: null,
-                    'email' => $row['email'] ?? null ?: null, 'phone' => $row['phone'] ?? null ?: null, 'gender' => $row['gender'] ?? null ?: null,
+                    'first_name' => $row['first_name'] ?? null ?: null, 'last_name' => $row['last_name'] ?? null ?: null, 'other_names' => $row['other_names'] ?? null ?: null,
+                    'email' => $row['email'] ?? null ?: null, 'phone' => $row['phone'] ?? null ?: null, 'gender' => strtolower($row['gender'] ?? '') ?: null,
                     'date_of_birth' => ($row['date_of_birth'] ?? '') ?: null, 'national_id' => $row['national_id'] ?? null ?: null,
                     'kra_pin' => $row['kra_pin'] ?? null ?: null, 'nssf_number' => $row['nssf_number'] ?? null ?: null, 'shif_number' => $row['shif_number'] ?? null ?: null,
                     'branch_id' => $find(Branch::class, 'name', $row['branch'] ?? null, 'branch'),
@@ -180,13 +178,25 @@ class DataImporter
                     'employment_level_id' => $find(EmploymentLevel::class, 'name', $row['level'] ?? null, 'level'),
                     'primary_supervisor_id' => $this->supervisorId($companyId, $row['supervisor'] ?? null, $row['employee_number']),
                     'date_of_joining' => ($row['date_of_joining'] ?? '') ?: null,
-                    'contract_type' => ($row['contract_type'] ?? '') ?: 'permanent',
+                    'contract_type' => strtolower($row['contract_type'] ?? '') ?: null,
                     'contract_end_date' => ($row['contract_end_date'] ?? '') ?: null,
                 ];
+                if (($row['next_of_kin_name'] ?? '') !== '' || ($row['next_of_kin_phone'] ?? '') !== '') {
+                    $attrs['next_of_kin'] = [[
+                        'name' => $row['next_of_kin_name'] ?? '', 'phone' => $row['next_of_kin_phone'] ?? '',
+                        'relationship' => strtolower($row['next_of_kin_relationship'] ?? '') ?: 'relative',
+                    ]];
+                }
                 $employee = Employee::withoutGlobalScope('company')->withTrashed()->where('company_id', $companyId)->where('employee_number', $row['employee_number'])->first();
                 if ($employee) {
-                    // Re-import updates the record through the same service as the HR edit form.
-                    $this->employees->update($employee, array_filter($attrs, fn ($v) => $v !== null));
+                    // Re-import updates the record through the same service and rules as the HR edit form
+                    // (only the columns filled in on the row are checked and changed).
+                    $attrs = array_filter($attrs, fn ($v) => $v !== null);
+                    if ($employee->nextOfKin()->exists()) {
+                        unset($attrs['next_of_kin']); // never replace a next of kin kept on the record
+                    }
+                    $this->validateEmployee($attrs + ['employee_number' => $row['employee_number']], $companyId, $employee);
+                    $this->employees->update($employee, $attrs);
                     if ($bool($row['create_login'] ?? '') && ! $employee->user_id) {
                         $this->employees->accounts->createLogin($employee);
                     }
@@ -196,6 +206,9 @@ class DataImporter
 
                 // New hire: same onboarding as Add employee (probation, contract, supervisor role, optional login).
                 $attrs['date_of_joining'] ??= now()->toDateString();
+                $attrs['contract_type'] ??= 'permanent';
+                // Same rules as Add employee: national ID, KRA PIN and phone formats, required fields, next of kin.
+                $this->validateEmployee($attrs + ['employee_number' => $row['employee_number']], $companyId, null);
                 $employee = $this->employees->create($attrs + [
                     'employee_number' => $row['employee_number'],
                     'create_login' => $bool($row['create_login'] ?? ''),
@@ -224,6 +237,24 @@ class DataImporter
         }
 
         return $id;
+    }
+
+    /**
+     * Validates an employee row with the rules of the HR form (EmployeeRules). A new hire is checked in full;
+     * an update only on the columns the row fills in.
+     */
+    private function validateEmployee(array $data, int $companyId, ?Employee $employee): void
+    {
+        $rules = EmployeeRules::personal($companyId, $employee)
+            + EmployeeRules::statutory($companyId, $employee)
+            + EmployeeRules::employment($companyId, $employee)
+            + EmployeeRules::family(requireNextOfKin: $employee === null);
+        if ($employee) {
+            $rules = array_filter($rules, fn ($r, $key) => array_key_exists(explode('.', $key)[0], $data), ARRAY_FILTER_USE_BOTH);
+        }
+        $validator = Validator::make($data, $rules, EmployeeRules::messages(), EmployeeRules::attributes());
+        $validator->after(fn ($v) => EmployeeRules::after($v, $employee));
+        $validator->validate();
     }
 
     private function validate(array $row, array $rules): void

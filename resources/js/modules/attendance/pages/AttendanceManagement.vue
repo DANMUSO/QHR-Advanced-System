@@ -52,7 +52,7 @@ const saving = ref(false);
 // Local date (toISOString() is UTC and shows yesterday before 03:00 in Nairobi).
 const reportDate = ref(new Date().toLocaleDateString('en-CA'));
 const reportSummary = ref({});
-const reportStatusColors = { present: 'green', late: 'yellow', absent: 'red', on_leave: 'blue', incomplete: 'orange' };
+const reportStatusColors = { present: 'green', late: 'yellow', absent: 'red', on_leave: 'blue', incomplete: 'orange', in_progress: 'green', not_in: 'slate', weekend: 'slate', holiday: 'purple' };
 const reportCols = [
     { key: 'employee', label: 'Employee' },
     { key: 'first_in', label: 'Check In' },
@@ -208,7 +208,7 @@ onMounted(load);
         <Tabs v-model="tab" :tabs="tabs" />
 
         <div v-if="tab === 'report'" class="mb-4 flex flex-wrap gap-3">
-            <div v-for="[key, label, color] in [['present','Present','bg-green-500'],['late','Late','bg-yellow-500'],['absent','Absent','bg-red-500'],['on_leave','On Leave','bg-blue-500']]" :key="key" class="card flex items-center gap-3 px-4 py-3">
+            <div v-for="[key, label, color] in [['present','Present','bg-green-500'],['late','Late','bg-yellow-500'],['absent','Absent','bg-red-500'],['on_leave','On Leave','bg-blue-500'],['not_in','Not in yet','bg-slate-400'],['off','Off / Holiday','bg-slate-300']]" :key="key" class="card flex items-center gap-3 px-4 py-3">
                 <span class="size-2.5 rounded-full" :class="color" />
                 <span class="text-sm font-medium">{{ label }}: <strong>{{ reportSummary[key] ?? 0 }}</strong></span>
             </div>

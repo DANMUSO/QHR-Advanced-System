@@ -22,6 +22,15 @@ const errors = ref({});
 const saving = ref(false);
 
 const pendingResignation = computed(() => data.value?.resignations?.find((r) => r.status === 'pending'));
+// Earliest allowed last working day: notice date + the company's notice period (the server enforces the same rule).
+const noticeDays = computed(() => data.value?.resignation_notice?.days ?? 0);
+const earliestLastDay = computed(() => {
+    const from = resignForm.value.notice_date;
+    if (!from) return data.value?.resignation_notice?.earliest_last_day ?? '';
+    const d = new Date(`${from}T00:00:00`);
+    d.setDate(d.getDate() + noticeDays.value);
+    return d.toLocaleDateString('en-CA');
+});
 
 async function load() {
     loading.value = true;
@@ -39,10 +48,14 @@ async function submitLetter() {
 }
 
 function openResign() {
-    resignForm.value = { notice_date: new Date().toLocaleDateString('en-CA'), last_working_day: '', reason: '', letter: null };
+    resignForm.value = { notice_date: new Date().toLocaleDateString('en-CA'), last_working_day: data.value?.resignation_notice?.earliest_last_day ?? '', reason: '', letter: null };
     errors.value = {}; resignOpen.value = true;
 }
 async function submitResign() {
+    if (resignForm.value.last_working_day && earliestLastDay.value && resignForm.value.last_working_day < earliestLastDay.value) {
+        errors.value = { last_working_day: `With a ${noticeDays.value}-day notice period, your last working day can be no earlier than ${formatDate(earliestLastDay.value)}.` };
+        return;
+    }
     if (!await swal.confirm({ title: 'Submit your resignation?', text: 'HR and your supervisor will be notified.', confirmLabel: 'Submit', danger: true })) return;
     saving.value = true; errors.value = {};
     try {
@@ -154,7 +167,9 @@ onMounted(load);
             <div class="space-y-4">
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div><label class="label">Notice date</label><input v-model="resignForm.notice_date" type="date" class="input" /><p v-if="errors.notice_date" class="field-error">{{ errors.notice_date }}</p></div>
-                    <div><label class="label">Last working day</label><input v-model="resignForm.last_working_day" type="date" class="input" /><p v-if="errors.last_working_day" class="field-error">{{ errors.last_working_day }}</p></div>
+                    <div><label class="label">Last working day</label><input v-model="resignForm.last_working_day" type="date" class="input" :min="earliestLastDay" />
+                        <p v-if="earliestLastDay && !errors.last_working_day" class="mt-1 text-xs text-slate-500">{{ noticeDays }}-day notice: earliest {{ formatDate(earliestLastDay) }}.</p>
+                        <p v-if="errors.last_working_day" class="field-error">{{ errors.last_working_day }}</p></div>
                 </div>
                 <div><label class="label">Reason</label><textarea v-model="resignForm.reason" rows="4" class="input" /><p v-if="errors.reason" class="field-error">{{ errors.reason }}</p></div>
                 <div><label class="label">Resignation letter (optional)</label><input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" class="input" @change="resignForm.letter = $event.target.files[0] ?? null" /><p v-if="errors.letter" class="field-error">{{ errors.letter }}</p></div>

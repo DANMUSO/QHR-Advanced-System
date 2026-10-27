@@ -16,7 +16,10 @@ function onKey(e) {
         ui.commandPaletteOpen = !ui.commandPaletteOpen;
     }
 }
-onMounted(() => window.addEventListener('keydown', onKey));
+onMounted(() => {
+    window.addEventListener('keydown', onKey);
+    ui.showFlashNotice();
+});
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 </script>
 

@@ -47,6 +47,7 @@ Route::middleware('permission:settings.manage')->prefix('admin')->group(function
 // Users & roles
 Route::middleware('permission:users.manage')->prefix('admin')->group(function () {
     Route::get('users', [UserAdminController::class, 'index']);
+    Route::post('users', [UserAdminController::class, 'store']);
     Route::get('users/{user}', [UserAdminController::class, 'show'])->whereNumber('user');
     Route::put('users/{user}/roles', [UserAdminController::class, 'syncRoles'])->whereNumber('user');
     Route::put('users/{user}/permissions', [UserAdminController::class, 'syncPermissions'])->whereNumber('user');

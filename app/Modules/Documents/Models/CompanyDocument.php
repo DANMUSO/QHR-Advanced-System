@@ -61,6 +61,17 @@ class CompanyDocument extends Model
         return $this->hasMany(CompanyDocumentAcknowledgement::class);
     }
 
+    public function views(): HasMany
+    {
+        return $this->hasMany(CompanyDocumentView::class);
+    }
+
+    /** Views of the current version (a replaced file has to be opened again). */
+    public function currentViews(): HasMany
+    {
+        return $this->views()->whereColumn('company_document_views.version', '>=', 'company_documents.version');
+    }
+
     /** Documents addressed to an employee: all staff, their department or their branch. */
     public function scopeVisibleTo(Builder $q, Employee $employee): Builder
     {

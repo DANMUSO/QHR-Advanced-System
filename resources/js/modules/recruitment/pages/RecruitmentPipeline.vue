@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Plus, Search, UserCheck, ExternalLink, CheckCircle, Circle, Download, Pencil, Check, X, Send, UserPlus, FileText, Undo2 } from 'lucide-vue-next';
+import { Plus, Search, UserCheck, ExternalLink, CheckCircle, Circle, Download, Pencil, Check, X, Send, UserPlus, FileText, Undo2, Eye, ArrowRight, Ban, Gift } from 'lucide-vue-next';
 import api, { fieldErrors, errorMessage } from '@/lib/api';
 import { useUiStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
@@ -168,6 +168,7 @@ function switchTab(t) {
 async function openForm(row = null) {
     errors.value = {};
     form.value = row ? { ...row } : { ...(defaultForms[tab.value] ?? {}) };
+    if (tab.value === 'interviews' && form.value.scheduled_at) form.value.scheduled_at = String(form.value.scheduled_at).replace(' ', 'T');
     modal.value = { open: true, row };
     if (tab.value === 'postings') {
         // Only approved requisitions can be posted.
@@ -213,10 +214,40 @@ async function rejectRequisition(note) {
     rejecting.value.loading = false;
 }
 
-async function moveApplicantStage(row, stage) {
-    try { await api.patch(`/recruitment/applicants/${row.id}/stage`, { stage }); ui.toast('Stage updated.'); await load(); }
-    catch (e) { ui.toast(errorMessage(e), 'error'); }
+async function moveApplicantStage(row, stage, reason = null) {
+    try {
+        const { data } = await api.patch(`/recruitment/applicants/${row.id}/stage`, { stage, reason });
+        ui.toast(data.message ?? 'Stage updated.');
+        await load(paginator.value?.current_page ?? 1);
+        if (detail.value.open) await openApplicant(row);
+        return true;
+    } catch (e) { ui.toast(errorMessage(e), 'error'); return false; }
 }
+
+// Applicant rejection (reason required) and detail view (interviews, score, offers, CV).
+const rejectingApplicant = ref({ open: false, row: null, loading: false });
+async function rejectApplicant(reason) {
+    rejectingApplicant.value.loading = true;
+    if (await moveApplicantStage(rejectingApplicant.value.row, 'rejected', reason)) rejectingApplicant.value.open = false;
+    rejectingApplicant.value.loading = false;
+}
+const detail = ref({ open: false, loading: false, data: null });
+async function openApplicant(row) {
+    detail.value = { open: true, loading: true, data: detail.value.data?.id === row.id ? detail.value.data : null };
+    try { detail.value.data = (await api.get(`/recruitment/applicants/${row.id}`)).data.data; }
+    catch (e) { ui.toast(errorMessage(e), 'error'); detail.value.open = false; }
+    finally { detail.value.loading = false; }
+}
+// "Make offer" from an applicant: open the Offers tab with the applicant chosen.
+async function offerFor(row) {
+    detail.value.open = false;
+    switchTab('offers');
+    await openForm();
+    form.value.applicant_id = row.id;
+}
+// Completing an interview is only possible once its scheduled time has passed (the server enforces it too).
+const interviewInFuture = computed(() => tab.value === 'interviews' && form.value.scheduled_at && new Date(form.value.scheduled_at) > new Date());
+const stageLabels = { applied: 'Applied', screening: 'Screening', interview: 'Interview', offer: 'Offer', hired: 'Hired', rejected: 'Rejected' };
 
 // Hired applicant / accepted offer → prefilled onboarding form on the Employees page.
 function convert(applicantId) {
@@ -328,7 +359,11 @@ onMounted(load);
                 </template>
                 <!-- Applicants -->
                 <template v-else-if="tab === 'applicants'">
+                    <button class="btn-ghost !p-1.5" title="View applicant" @click="openApplicant(row)"><Eye class="size-4" /></button>
                     <a v-if="row.cv_url" :href="row.cv_url" target="_blank" class="btn-ghost !p-1.5" title="Download CV"><FileText class="size-4" /></a>
+                    <button v-if="canEdit && row.next_stage" class="btn-ghost !p-1.5 text-brand-600" :title="`Move to ${stageLabels[row.next_stage]}`" @click="moveApplicantStage(row, row.next_stage)"><ArrowRight class="size-4" /></button>
+                    <button v-if="canEdit && row.can_offer && row.stage === 'interview'" class="btn-ghost !p-1.5 text-purple-600" title="Make offer" @click="offerFor(row)"><Gift class="size-4" /></button>
+                    <button v-if="canEdit && row.can_reject" class="btn-ghost !p-1.5 text-rose-600" title="Reject" @click="rejectingApplicant = { open: true, row, loading: false }"><Ban class="size-4" /></button>
                     <button v-if="canEdit && row.stage === 'offer'" class="btn-ghost !p-1.5 text-green-500" title="Mark Hired" @click="moveApplicantStage(row, 'hired')"><UserCheck class="size-4" /></button>
                     <button v-if="canEdit && row.can_convert" class="btn-ghost !px-2 !py-1.5 text-xs text-brand-600" title="Convert to employee" @click="convert(row.id)"><UserPlus class="size-4" /> Convert</button>
                 </template>
@@ -400,7 +435,7 @@ onMounted(load);
                     <div><label class="label">Location / Link</label><input v-model="form.location" type="text" class="input" /></div>
                     <template v-if="modal.row">
                         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div><label class="label">Status</label><select v-model="form.status" class="input"><option value="scheduled">Scheduled</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="no_show">No show</option></select></div>
+                            <div><label class="label">Status</label><select v-model="form.status" class="input"><option value="scheduled">Scheduled</option><option value="completed" :disabled="interviewInFuture">Completed</option><option value="cancelled">Cancelled</option><option value="no_show" :disabled="interviewInFuture">No show</option></select><p v-if="errors.status" class="field-error">{{ errors.status }}</p><p v-else-if="interviewInFuture" class="mt-1 text-xs text-slate-400">Can be completed once the interview time has passed.</p></div>
                             <div><label class="label">Score (0-100)</label><input v-model="form.score" type="number" min="0" max="100" class="input" /></div>
                         </div>
                         <div><label class="label">Feedback</label><textarea v-model="form.feedback" rows="3" class="input" /></div>
@@ -408,7 +443,7 @@ onMounted(load);
                 </template>
                 <!-- Offers -->
                 <template v-else-if="tab === 'offers'">
-                    <div v-if="!modal.row"><label class="label">Applicant</label><LookupSelect v-model="form.applicant_id" kind="applicants" placeholder="Choose an applicant" :error="!!errors?.applicant_id" /><p v-if="errors.applicant_id" class="field-error">{{ errors.applicant_id }}</p></div>
+                    <div v-if="!modal.row"><label class="label">Applicant</label><LookupSelect v-model="form.applicant_id" kind="applicants" placeholder="Choose an applicant" :error="!!errors?.applicant_id" /><p v-if="errors.applicant_id" class="field-error">{{ errors.applicant_id }}</p><p v-else class="mt-1 text-xs text-slate-400">Only interviewed applicants who are not yet hired can receive an offer.</p></div>
                     <div><label class="label">Offered Salary (KES)</label><input v-model="form.offered_salary" type="number" class="input" /><p v-if="errors.offered_salary" class="field-error">{{ errors.offered_salary }}</p></div>
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div><label class="label">Start Date</label><input v-model="form.start_date" type="date" class="input" /></div>
@@ -446,6 +481,58 @@ onMounted(load);
             <template #footer>
                 <button class="btn-secondary" @click="modal.open = false">Cancel</button>
                 <button class="btn-primary" :disabled="saving" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
+            </template>
+        </Modal>
+
+        <ConfirmDialog :open="rejectingApplicant.open" title="Reject applicant" danger confirm-label="Reject"
+            :message="`Reject ${rejectingApplicant.row?.name ?? ''}? The reason is kept on the applicant's record.`"
+            reason-label="Reason" :loading="rejectingApplicant.loading" @close="rejectingApplicant.open = false" @confirm="rejectApplicant" />
+
+        <Modal :open="detail.open" :title="detail.data?.name ?? 'Applicant'" size="lg" @close="detail.open = false">
+            <div v-if="detail.loading && !detail.data" class="flex justify-center py-10"><Spinner /></div>
+            <div v-else-if="detail.data" class="space-y-5 text-sm">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div><p class="text-xs text-slate-400">Position</p><p class="font-medium">{{ detail.data.posting_title ?? '—' }}</p></div>
+                    <div><p class="text-xs text-slate-400">Stage</p><Badge :color="statusColorMap.applicants[detail.data.stage] ?? 'slate'">{{ stageLabels[detail.data.stage] ?? detail.data.stage }}</Badge></div>
+                    <div><p class="text-xs text-slate-400">Email / phone</p><p>{{ detail.data.email }}<span v-if="detail.data.phone"> · {{ detail.data.phone }}</span></p></div>
+                    <div><p class="text-xs text-slate-400">Score</p><p class="font-medium">{{ detail.data.score ?? 'Not scored' }}</p></div>
+                    <div><p class="text-xs text-slate-400">Applied</p><p>{{ detail.data.applied_at ?? '—' }} <span v-if="detail.data.source" class="text-slate-400">via {{ detail.data.source }}</span></p></div>
+                    <div><p class="text-xs text-slate-400">CV</p><a v-if="detail.data.cv_url" :href="detail.data.cv_url" target="_blank" class="text-brand-600 hover:underline">Download CV</a><span v-else class="text-slate-400">No CV on file</span></div>
+                </div>
+                <div v-if="detail.data.cover_letter"><p class="mb-1 text-xs text-slate-400">Cover letter</p><p class="whitespace-pre-line">{{ detail.data.cover_letter }}</p></div>
+                <div v-if="detail.data.notes"><p class="mb-1 text-xs text-slate-400">Notes</p><p class="whitespace-pre-line">{{ detail.data.notes }}</p></div>
+                <div>
+                    <p class="mb-2 font-semibold">Interviews</p>
+                    <p v-if="!detail.data.interviews?.length" class="text-slate-400">No interviews yet.</p>
+                    <div v-for="iv in detail.data.interviews" :key="iv.id" class="mb-2 rounded-lg border border-slate-100 px-3 py-2 dark:border-slate-800">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="font-medium capitalize">{{ iv.interview_type }}</span>
+                            <span class="text-slate-500">{{ iv.scheduled_at }}</span>
+                            <span v-if="iv.interviewer_name" class="text-slate-500">· {{ iv.interviewer_name }}</span>
+                            <Badge :color="statusColorMap.interviews[iv.status] ?? 'slate'" class="ml-auto">{{ iv.status?.replace('_', ' ') }}</Badge>
+                            <span v-if="iv.score !== null" class="font-medium">{{ iv.score }}/100</span>
+                        </div>
+                        <p v-if="iv.feedback" class="mt-1 whitespace-pre-line text-slate-500">{{ iv.feedback }}</p>
+                    </div>
+                </div>
+                <div>
+                    <p class="mb-2 font-semibold">Offers</p>
+                    <p v-if="!detail.data.offers?.length" class="text-slate-400">No offers yet.</p>
+                    <div v-for="o in detail.data.offers" :key="o.id" class="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-3 py-2 dark:border-slate-800">
+                        <span class="font-medium">KES {{ o.offered_salary?.toLocaleString() }}</span>
+                        <span class="text-slate-500">starts {{ o.start_date }} · expires {{ o.expiry_date }}</span>
+                        <Badge :color="statusColorMap.offers[o.status] ?? 'slate'" class="ml-auto">{{ o.status }}</Badge>
+                        <a :href="o.pdf_url" target="_blank" class="btn-ghost !p-1.5" title="Offer letter"><Download class="size-4" /></a>
+                    </div>
+                </div>
+            </div>
+            <template #footer>
+                <template v-if="canEdit && detail.data">
+                    <button v-if="detail.data.can_reject" class="btn-secondary text-rose-600" @click="rejectingApplicant = { open: true, row: detail.data, loading: false }"><Ban class="size-4" /> Reject</button>
+                    <button v-if="detail.data.can_offer && detail.data.stage === 'interview'" class="btn-secondary" @click="offerFor(detail.data)"><Gift class="size-4" /> Make offer</button>
+                    <button v-if="detail.data.next_stage" class="btn-primary" @click="moveApplicantStage(detail.data, detail.data.next_stage)"><ArrowRight class="size-4" /> Move to {{ stageLabels[detail.data.next_stage] }}</button>
+                </template>
+                <button class="btn-secondary" @click="detail.open = false">Close</button>
             </template>
         </Modal>
 

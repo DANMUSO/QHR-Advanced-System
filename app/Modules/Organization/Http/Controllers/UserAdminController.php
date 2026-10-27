@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Notifications\ActivateAccount;
 use App\Support\ModuleRegistry;
+use App\Support\PrivilegedAccess;
 use App\Support\Tenancy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -18,13 +19,10 @@ use Spatie\Permission\Models\Role;
 /** User account administration: roles, direct permissions, account state and support actions. */
 class UserAdminController extends Controller
 {
-    /** Permissions only a super admin may grant. */
-    private const SUPER_ONLY_PERMISSIONS = ['companies.manage'];
-
     public function index(Request $request): JsonResponse
     {
         $query = $this->scopedUsers($request)
-            ->with(['roles:id,name', 'company:id,name', 'employee:id,user_id,first_name,last_name,employee_number,photo_path'])
+            ->with(['roles:id,name', 'permissions:id,name', 'company:id,name', 'employee:id,user_id,first_name,last_name,employee_number,photo_path'])
             ->when(trim((string) $request->query('search')), fn ($q, $s) => $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%")))
             ->when($request->query('role'), fn ($q, $r) => $q->whereHas('roles', fn ($w) => $w->where('name', $r)))
             ->when($request->query('status'), fn ($q, $s) => $this->whereStatus($q, $s))
@@ -33,7 +31,9 @@ class UserAdminController extends Controller
         $sort = in_array($request->query('sort'), ['name', 'email', 'last_login_at', 'created_at'], true) ? $request->query('sort') : 'name';
         $query->orderBy($sort, $request->query('dir') === 'desc' ? 'desc' : 'asc')->orderBy('id');
 
-        $page = $query->paginate(min(100, max(5, $request->integer('per_page', 20))))->through(fn (User $u) => $this->row($u));
+        $actor = $request->user();
+        $page = $query->paginate(min(100, max(5, $request->integer('per_page', 20))))
+            ->through(fn (User $u) => $this->row($u) + ['can_send_activation' => PrivilegedAccess::canHandOverAccess($actor, $u)]);
 
         $base = $this->scopedUsers($request);
         $stats = [
@@ -49,7 +49,50 @@ class UserAdminController extends Controller
             'stats' => $stats,
             'roles' => Role::orderBy('name')->pluck('name'),
             'can_copy_activation_link' => app()->environment('local'),
+            'can_create_users' => PrivilegedAccess::isSuper($request->user()),
         ]));
+    }
+
+    /**
+     * Super admin: a login with no employee record, e.g. an external accountant or a director who only
+     * approves. Emails an activation link; in local development the link can also be copied afterwards.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        abort_unless(PrivilegedAccess::isSuper($actor), 403, 'Only a super admin can create a user without an employee record.');
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'email' => ['required', 'email', 'max:190', 'unique:users,email'],
+            'company_id' => ['nullable', 'integer', 'exists:companies,id'],
+            'roles' => ['required', 'array', 'min:1'],
+            'roles.*' => ['string', 'distinct', 'exists:roles,name'],
+            'send_activation' => ['boolean'],
+        ], ['email.unique' => 'Another login already uses this email address.', 'roles.required' => 'Choose at least one role.']);
+
+        $user = User::create([
+            'company_id' => $data['company_id'] ?? null,
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'is_active' => true,
+        ]);
+        $user->syncRoles($data['roles']);
+
+        activity('security')->causedBy($actor)->performedOn($user)->event('created')
+            ->withProperties(['attributes' => ['roles' => $data['roles'], 'company_id' => $user->company_id]])
+            ->log("Standalone user {$user->email} created with roles: ".implode(', ', $data['roles']));
+
+        $sent = $request->boolean('send_activation', true);
+        if ($sent) {
+            $user->notify(new ActivateAccount(Password::broker('activations')->createToken($user)));
+        }
+        $user->load(['roles:id,name', 'company:id,name']);
+
+        return response()->json([
+            'message' => $sent ? "User created. An activation email was sent to {$user->email}." : 'User created.',
+            'data' => $this->row($user),
+        ], 201);
     }
 
     public function show(Request $request, User $user): JsonResponse
@@ -78,14 +121,28 @@ class UserAdminController extends Controller
                 'is_self' => $user->is($actor),
             ],
             'catalogue' => ModuleRegistry::permissions(),
+            // Every role is listed; the ones this administrator may not grant or remove come back locked with the reason.
             'assignable_roles' => Role::orderBy('name')->get(['id', 'name'])
                 ->filter(fn ($r) => $r->name !== 'super-admin' || $actor->hasRole('super-admin'))
-                ->map(fn ($r) => ['name' => $r->name, 'label' => config("hr.roles.{$r->name}.label", str($r->name)->headline()->toString())])->values(),
+                ->map(fn ($r) => [
+                    'name' => $r->name,
+                    'label' => config("hr.roles.{$r->name}.label", str($r->name)->headline()->toString()),
+                    'locked' => ! PrivilegedAccess::canAssignRole($actor, $r->name),
+                    'locked_reason' => PrivilegedAccess::canAssignRole($actor, $r->name) ? null
+                        : 'Finance, payroll and administrator roles can only be granted or removed by a super admin (segregation of duties).',
+                ])->values(),
             'grantable_permissions' => $this->grantable($actor),
             'login_history' => $user->loginActivities()->latest('created_at')->limit(10)->get(),
-            'can_copy_activation_link' => app()->environment('local'),
+            'is_privileged' => $privileged = PrivilegedAccess::isPrivilegedUser($user),
+            'can_copy_activation_link' => app()->environment('local') && PrivilegedAccess::canHandOverAccess($actor, $user),
+            'can_resend_activation' => PrivilegedAccess::canHandOverAccess($actor, $user),
+            'activation_locked_reason' => PrivilegedAccess::canHandOverAccess($actor, $user) ? null
+                : 'Only a super admin can send or copy activation links for finance, payroll or administrator accounts.',
             'can_impersonate' => $actor->can('users.impersonate') && ! $user->is($actor) && $user->is_active
-                && (! $user->hasRole('super-admin') || $actor->hasRole('super-admin')),
+                && PrivilegedAccess::impersonationDenial($actor, $user) === null,
+            'impersonation_locked_reason' => $actor->can('users.impersonate') && ! $user->is($actor)
+                ? PrivilegedAccess::impersonationDenial($actor, $user) : null,
+            'privileged_hint' => $privileged && ! PrivilegedAccess::isSuper($actor),
         ]);
     }
 
@@ -104,6 +161,10 @@ class UserAdminController extends Controller
         $new = array_values($data['roles']);
         $touchesSuper = in_array('super-admin', $new, true) || in_array('super-admin', $old, true);
         abort_if($touchesSuper && ! $actor->hasRole('super-admin'), 403, 'Only a super admin can grant or remove the super admin role.');
+        // Segregation of duties: HR may move staff between employee and supervisor only.
+        $changed = array_merge(array_diff($new, $old), array_diff($old, $new));
+        $locked = array_values(array_filter($changed, fn ($r) => ! PrivilegedAccess::canAssignRole($actor, $r)));
+        abort_if($locked, 403, 'Only a super admin can grant or remove these roles: '.implode(', ', $locked).'.');
 
         $user->syncRoles($new);
 
@@ -185,6 +246,7 @@ class UserAdminController extends Controller
     public function resendActivation(Request $request, User $user): JsonResponse
     {
         $this->authorizeTarget($request, $user);
+        abort_unless(PrivilegedAccess::canHandOverAccess($request->user(), $user), 403, 'Only a super admin can send activation emails for finance, payroll or administrator accounts.');
         abort_if($user->activated_at !== null, 422, 'This account is already activated.');
         abort_unless($user->is_active, 422, 'Enable the account before sending an activation email.');
 
@@ -201,6 +263,7 @@ class UserAdminController extends Controller
     {
         abort_unless(app()->environment('local'), 403, 'Activation links can only be copied in local development.');
         $this->authorizeTarget($request, $user);
+        abort_unless(PrivilegedAccess::canHandOverAccess($request->user(), $user), 403, 'Only a super admin can copy activation links for finance, payroll or administrator accounts.');
         abort_if($user->activated_at !== null, 422, 'This account is already activated.');
         abort_unless($user->is_active, 422, 'Enable the account before activating it.');
 
@@ -292,7 +355,7 @@ class UserAdminController extends Controller
         }
         $own = $actor->getAllPermissions()->pluck('name')->all();
 
-        return $all->filter(fn ($p) => in_array($p, $own, true) && ! in_array($p, self::SUPER_ONLY_PERMISSIONS, true))->values()->all();
+        return $all->filter(fn ($p) => in_array($p, $own, true) && ! PrivilegedAccess::isPrivilegedPermission($p))->values()->all();
     }
 
     private function authorizeTarget(Request $request, User $user): void

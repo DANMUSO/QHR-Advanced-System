@@ -541,7 +541,7 @@ watch(() => route.params.id, (id, old) => { if (id && id !== old) { activeTab.va
                             {{ payProfile?.profile ? 'Pay Profile' : 'No pay profile yet' }}
                         </h3>
                         <div class="flex gap-2">
-                            <button v-if="payProfile?.profile && auth.can('payroll.manage')" class="btn-secondary" @click="salaryModal = true; salaryForm = { basic_salary: '', effective_date: new Date().toISOString().slice(0,10), reason: 'increment', notes: '' }; salaryErrors = {}">
+                            <button v-if="payProfile?.profile && auth.can('payroll.manage')" class="btn-secondary" @click="salaryModal = true; salaryForm = { basic_salary: '', effective_date: new Date().toLocaleDateString('en-CA'), reason: payProfile?.salary_history?.length ? 'increment' : 'initial', notes: '' }; salaryErrors = {}">
                                 Change Salary
                             </button>
                             <button v-if="auth.can('payroll.manage')" class="btn-primary" @click="openProfileModal">
@@ -613,7 +613,7 @@ watch(() => route.params.id, (id, old) => { if (id && id !== old) { activeTab.va
                         <div class="card p-5">
                             <div class="mb-3 flex items-center justify-between">
                                 <h4 class="text-sm font-semibold text-slate-900 dark:text-white">Pay Components</h4>
-                                <button v-if="auth.can('payroll.manage')" class="btn-primary !py-1.5 text-xs" @click="componentModal = { open: true, row: null }; componentForm = { component_id: '', amount: '', rate: '', effective_from: new Date().toISOString().slice(0,10), effective_to: '', notes: '' }; componentErrors = {}">
+                                <button v-if="auth.can('payroll.manage')" class="btn-primary !py-1.5 text-xs" @click="componentModal = { open: true, row: null }; componentForm = { component_id: '', amount: '', rate: '', effective_from: new Date().toLocaleDateString('en-CA'), effective_to: '', notes: '' }; componentErrors = {}">
                                     <Plus class="size-3.5" /> Add
                                 </button>
                             </div>
@@ -680,7 +680,7 @@ watch(() => route.params.id, (id, old) => { if (id && id !== old) { activeTab.va
                             </div>
                             <div v-if="!payProfile?.profile">
                                 <label class="label">Effective Date</label>
-                                <input v-model="payProfileForm.effective_date" type="date" class="input" />
+                                <input v-model="payProfileForm.effective_date" type="date" class="input" :min="employee?.date_of_joining?.slice(0, 10) || undefined" />
                             </div>
                             <div>
                                 <label class="label">Payment Method</label>
@@ -754,7 +754,7 @@ watch(() => route.params.id, (id, old) => { if (id && id !== old) { activeTab.va
                             </div>
                             <div>
                                 <label class="label">Effective Date <span class="text-red-500">*</span></label>
-                                <input v-model="salaryForm.effective_date" type="date" class="input" />
+                                <input v-model="salaryForm.effective_date" type="date" class="input" :min="employee?.date_of_joining?.slice(0, 10) || undefined" />
                                 <p v-if="salaryErrors.effective_date" class="mt-1 text-xs text-red-500">{{ salaryErrors.effective_date }}</p>
                             </div>
                             <div>
@@ -798,7 +798,7 @@ watch(() => route.params.id, (id, old) => { if (id && id !== old) { activeTab.va
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
                                     <label class="label">Effective From <span class="text-red-500">*</span></label>
-                                    <input v-model="componentForm.effective_from" type="date" class="input" />
+                                    <input v-model="componentForm.effective_from" type="date" class="input" :min="employee?.date_of_joining?.slice(0, 10) || undefined" />
                                     <p v-if="componentErrors.effective_from" class="mt-1 text-xs text-red-500">{{ componentErrors.effective_from }}</p>
                                 </div>
                                 <div>

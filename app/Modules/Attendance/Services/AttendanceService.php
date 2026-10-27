@@ -188,7 +188,10 @@ class AttendanceService
         $punches = AttendancePunch::withoutGlobalScope('company')->where('employee_id', $employee->id)
             ->whereBetween('punched_at', [$date->startOfDay(), $date->endOfDay()])->orderBy('punched_at')->get();
 
-        return $this->store($employee, $date, $this->evaluate($employee, $date, $punches));
+        $r = $this->evaluate($employee, $date, $punches);
+        $r['employed'] = $this->employedOn($employee, $date);
+
+        return $this->store($employee, $date, $r);
     }
 
     /**
@@ -226,12 +229,15 @@ class AttendanceService
             ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
             ->whereBetween('punched_at', [$date->startOfDay(), $date->endOfDay()])->orderBy('punched_at')->get()->groupBy('employee_id');
 
+        // Everyone employed that day (joined, not past their exit), plus anyone with punches or a stored row,
+        // so a row that no longer belongs (e.g. after a backdated exit) is re-evaluated and removed.
+        $rosterIds = $this->rosterQuery($date, $companyId)->pluck('id')->all();
+        $storedIds = AttendanceDay::withoutGlobalScope('company')->whereDate('date', $date)
+            ->when($companyId, fn ($q) => $q->where('company_id', $companyId))->pluck('employee_id')->all();
         $employees = Employee::withoutGlobalScope('company')
-            ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
-            ->where(fn ($q) => $q->where(fn ($a) => $a->where('status', 'active')
-                ->where(fn ($j) => $j->whereNull('date_of_joining')->orWhereDate('date_of_joining', '<=', $date)))
-                ->orWhereIn('id', $punches->keys()->all()))
+            ->whereIn('id', array_values(array_unique(array_merge($rosterIds, $punches->keys()->all(), $storedIds))))
             ->get(['id', 'company_id', 'branch_id', 'first_name', 'last_name', 'status', 'date_of_joining']);
+        $onRoster = array_flip($rosterIds);
 
         $ids = $employees->pluck('id')->all();
         $this->preloadShifts($ids);
@@ -240,8 +246,12 @@ class AttendanceService
         $existing = AttendanceDay::withoutGlobalScope('company')->whereIn('employee_id', $ids)->whereDate('date', $date)->get()->keyBy('employee_id');
 
         $stats = ['date' => $date->toDateString(), 'saved' => 0, 'absent' => 0, 'removed' => 0];
+        $tracking = [];
         foreach ($employees as $e) {
             $r = $this->evaluate($e, $date, $punches[$e->id] ?? collect(), isset($onLeave[$e->id]), $final, $partial[$e->id] ?? false);
+            // Absentees only where the company keeps attendance at all (otherwise everyone would be "absent").
+            $tracking[$e->company_id] ??= $this->tracksAttendance($e->company_id);
+            $r['employed'] = isset($onRoster[$e->id]) && $tracking[$e->company_id];
             $day = $this->store($e, $date, $r, $existing[$e->id] ?? null);
             if ($day) {
                 $stats['saved']++;
@@ -250,8 +260,108 @@ class AttendanceService
                 $stats['removed']++;
             }
         }
+        if ($final) {
+            $this->markFinalised($date, $companyId ? [$companyId] : $employees->pluck('company_id')->unique()->all());
+        }
 
         return $stats;
+    }
+
+    /**
+     * Employees on the payroll that day: joined on or before it and not past an exit (exit date = last day worked).
+     * Exited / transferred records count up to their exit date.
+     */
+    public function rosterQuery(CarbonInterface $date, ?int $companyId = null): \Illuminate\Database\Eloquent\Builder
+    {
+        $d = $date->toDateString();
+        $hasExits = Schema::hasTable('employee_exits');
+
+        return Employee::withoutGlobalScope('company')
+            ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+            ->where(fn ($j) => $j->whereNull('date_of_joining')->orWhereDate('date_of_joining', '<=', $d))
+            ->when($hasExits, fn ($q) => $q
+                ->whereNotExists(fn ($x) => $x->from('employee_exits')->whereColumn('employee_exits.employee_id', 'employees.id')
+                    ->where('employee_exits.status', '!=', 'cancelled')->whereDate('employee_exits.exit_date', '<', $d))
+                ->where(fn ($s) => $s->where('status', 'active')
+                    ->orWhereExists(fn ($x) => $x->from('employee_exits')->whereColumn('employee_exits.employee_id', 'employees.id')
+                        ->where('employee_exits.status', '!=', 'cancelled')->whereDate('employee_exits.exit_date', '>=', $d))),
+                fn ($q) => $q->where('status', 'active'));
+    }
+
+    public function employedOn(Employee $employee, CarbonInterface $date): bool
+    {
+        return $this->tracksAttendance($employee->company_id) && $this->rosterQuery($date)->whereKey($employee->id)->exists();
+    }
+
+    private array $tracks = [];
+
+    /** A company keeps attendance once anyone has clocked in (device, web or manual punch). */
+    public function tracksAttendance(int $companyId): bool
+    {
+        if (! empty($this->tracks[$companyId])) {
+            return true; // only "yes" is remembered: the first punch can arrive at any time
+        }
+
+        return $this->tracks[$companyId] = AttendancePunch::withoutGlobalScope('company')->withTrashed()->where('company_id', $companyId)->exists();
+    }
+
+    /** Memo of company-date pairs known to be finalised in this process. */
+    private array $finalised = [];
+
+    /**
+     * Makes sure every finished day in [from, to] has been finalised (absentees written) for the companies,
+     * computing any day the nightly job has not covered. At most 62 days are finalised per call.
+     */
+    public function ensureFinalised(CarbonInterface $from, CarbonInterface $to, array|int|null $companyIds = null): int
+    {
+        $from = CarbonImmutable::parse($from->toDateString());
+        $to = CarbonImmutable::parse($to->toDateString())->min(CarbonImmutable::yesterday());
+        if ($to->lt($from) || ! Schema::hasTable('attendance_finalised_dates')) {
+            return 0;
+        }
+        if ($from->diffInDays($to) > 62) {
+            $from = $to->subDays(62);
+        }
+        $companyIds = $companyIds === null ? Company::query()->pluck('id')->all() : (array) $companyIds;
+        $done = DB::table('attendance_finalised_dates')->whereIn('company_id', $companyIds)
+            ->whereBetween('date', [$from->toDateString(), $to->toDateString()])->get(['company_id', 'date'])
+            ->mapWithKeys(fn ($r) => [$r->company_id.'|'.substr($r->date, 0, 10) => true])->all();
+
+        $n = 0;
+        foreach ($companyIds as $cid) {
+            for ($d = $from; $d->lte($to); $d = $d->addDay()) {
+                $key = $cid.'|'.$d->toDateString();
+                if (isset($this->finalised[$key]) || isset($done[$key])) {
+                    continue;
+                }
+                $this->computeDate($d, (int) $cid);
+                $n++;
+            }
+        }
+
+        return $n;
+    }
+
+    private function markFinalised(CarbonImmutable $date, array $companyIds): void
+    {
+        if (! Schema::hasTable('attendance_finalised_dates')) {
+            return;
+        }
+        foreach (array_filter($companyIds) as $cid) {
+            $this->finalised[$cid.'|'.$date->toDateString()] = true;
+            DB::table('attendance_finalised_dates')->updateOrInsert(
+                ['company_id' => $cid, 'date' => $date->toDateString()], ['computed_at' => now()]
+            );
+        }
+    }
+
+    /** Forget finalisation from a date on (roster or calendar changed), so the next read recomputes those days. */
+    public function invalidateFinalised(int $companyId, CarbonInterface $from): void
+    {
+        $this->finalised = array_filter($this->finalised, fn ($v, $k) => ! str_starts_with($k, $companyId.'|') || substr($k, strlen($companyId) + 1) < $from->toDateString(), ARRAY_FILTER_USE_BOTH);
+        if (Schema::hasTable('attendance_finalised_dates')) {
+            DB::table('attendance_finalised_dates')->where('company_id', $companyId)->whereDate('date', '>=', $from->toDateString())->delete();
+        }
     }
 
     public function computeRange(CarbonInterface $from, CarbonInterface $to, ?int $companyId = null): array
@@ -274,8 +384,10 @@ class AttendanceService
         $day ??= AttendanceDay::withoutGlobalScope('company')->where('employee_id', $employee->id)->whereDate('date', $date)->first();
         $final = $date->lt(today());
 
+        // Not employed that day (before joining, after exit): only punches or an HR override keep a row.
+        $employed = $r['employed'] ?? true;
         $keep = $r['punch_count'] > 0
-            || ($r['day_type'] === 'working' && ($r['on_leave'] || $final))
+            || ($employed && $r['day_type'] === 'working' && ($r['on_leave'] || $final))
             || ($day && $day->override_status);
 
         if (! $keep) {

@@ -46,6 +46,13 @@ class Workflow extends Model
         return ['steps' => 'array', 'is_active' => 'boolean'];
     }
 
+    protected static function booted(): void
+    {
+        $flush = fn () => \App\Modules\Organization\Support\ApprovalChain::flushCache();
+        static::saved($flush);
+        static::deleted($flush);
+    }
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()->useLogName('settings')->logOnly(['name', 'trigger', 'steps', 'is_active'])->logOnlyDirty()->dontSubmitEmptyLogs();

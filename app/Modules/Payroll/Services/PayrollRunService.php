@@ -74,7 +74,7 @@ class PayrollRunService
             : $period->format('F Y').' · '.(PayrollRun::OFF_CYCLE_REASONS[$reason] ?? 'Off-cycle')
                 .($exitEmployeeId ? ' – '.Employee::withoutGlobalScope('company')->find($exitEmployeeId)?->full_name : '');
 
-        $run = PayrollRun::create([
+        $run = activity()->withoutLogs(fn () => PayrollRun::create([
             'company_id' => $company->id,
             'title' => $data['title'] ?? $label,
             'period' => $period->toDateString(),
@@ -88,9 +88,13 @@ class PayrollRunService
             'status' => 'draft',
             'notes' => $data['notes'] ?? null,
             'created_by' => $actor->id,
-        ]);
+        ]));
 
         activity('payroll')->performedOn($run)->causedBy($actor)->withProperties(['type' => $type, 'reason' => $reason])->log('Payroll run created');
+        if ($exitEmployeeId) {
+            // The leaver's leave settlement moves from the open regular run to this final-dues run.
+            self::inputsChanged($company->id, [$exitEmployeeId]);
+        }
         $this->calendarRow($company, $period)?->update(['status' => 'processing']);
 
         return $run;
@@ -118,6 +122,26 @@ class PayrollRunService
         }
 
         return null;
+    }
+
+    /**
+     * First day this record is paid. Normally the joining date, but when an older record of the same person
+     * (re-instatement / transfer: previous_employee_id) was still employed on or after that date, pay starts the day
+     * after the predecessor's last day so the overlapping days are never paid twice.
+     */
+    public function employmentStart(Employee $employee): ?CarbonImmutable
+    {
+        $start = $employee->date_of_joining ? CarbonImmutable::parse($employee->date_of_joining)->startOfDay() : null;
+        if (! $employee->previous_employee_id) {
+            return $start;
+        }
+        $previous = Employee::withoutGlobalScopes()->find($employee->previous_employee_id);
+        $previousEnd = $previous ? $this->employmentEnd($previous) : null;
+        if ($previousEnd && (! $start || $previousEnd->gte($start))) {
+            return $previousEnd->addDay()->startOfDay();
+        }
+
+        return $start;
     }
 
     /** Last day for final dues: the recorded end of employment, else a scheduled (future) exit date. */
@@ -171,8 +195,37 @@ class PayrollRunService
         return $base->where(fn ($q) => $q->whereNull('date_of_joining')->orWhereDate('date_of_joining', '<=', $end))
             ->whereIn('status', ['active', 'suspended', 'exited', 'transferred'])
             ->get()
-            ->filter(fn (Employee $e) => $onPayroll($e) && ! $paidInFinalDues->has($e->id))
+            ->filter(fn (Employee $e) => $onPayroll($e) && ! $paidInFinalDues->has($e->id)
+                && ! (($from = $this->employmentStart($e)) && $from->toDateString() > $end))
             ->values();
+    }
+
+    /**
+     * Employees a one-off item can be entered for: everyone the run pays (regular / final dues), or for other off-cycle
+     * runs anyone on the payroll in the period, including leavers whose last day falls in or after it.
+     *
+     * @return Collection<int, Employee>
+     */
+    public function payableEmployees(PayrollRun $run): Collection
+    {
+        if ($run->type === 'regular' || $run->off_cycle_reason === 'final_dues') {
+            return $this->eligibleEmployees($run);
+        }
+        $start = $run->period_start->toDateString();
+        $profiles = PayrollPayProfile::withoutGlobalScopes()->where('company_id', $run->company_id);
+        $held = (clone $profiles)->where('on_hold', true)->pluck('employee_id')->flip();
+
+        return Employee::withoutGlobalScope('company')->where('company_id', $run->company_id)->with('exitRecord')
+            ->whereIn('id', (clone $profiles)->select('employee_id'))
+            ->whereIn('status', ['active', 'suspended', 'exited', 'transferred'])->get()
+            ->filter(function (Employee $e) use ($held, $start) {
+                if (! in_array($e->status, ['exited', 'transferred'], true)) {
+                    return ! $held->has($e->id);
+                }
+                $end = $this->employmentEnd($e);
+
+                return $end && $end->toDateString() >= $start;
+            })->values();
     }
 
     public function basicSalaryOn(Employee $employee, PayrollPayProfile $profile, string $date): float
@@ -208,8 +261,11 @@ class PayrollRunService
         $employees = $this->eligibleEmployees($run);
         $profiles = PayrollPayProfile::withoutGlobalScopes()->whereIn('employee_id', $employees->pluck('id'))->get()->keyBy('employee_id');
         $adjustments = PayrollAdjustment::with('component')->where('payroll_run_id', $run->id)->get()->groupBy('employee_id');
+        // Leavers with their own final-dues run get the leave settlement there, not in the regular run.
+        $hasFinalDuesRun = $isRegular ? PayrollRun::withoutGlobalScopes()->where('company_id', $company->id)->where('off_cycle_reason', 'final_dues')
+            ->whereIn('exit_employee_id', $employees->pluck('id'))->pluck('exit_employee_id')->flip() : collect();
 
-        DB::transaction(function () use ($run, $actor, $company, $rates, $periodStart, $periodEnd, $workingDays, $monthlyHours, $byRole, $byCode, $isFinal, $isRegular, $employees, $profiles, $adjustments) {
+        DB::transaction(function () use ($run, $actor, $company, $rates, $periodStart, $periodEnd, $workingDays, $monthlyHours, $byRole, $byCode, $isFinal, $isRegular, $employees, $profiles, $adjustments, $hasFinalDuesRun) {
             PayrollRunEmployee::withoutGlobalScopes()->where('payroll_run_id', $run->id)->delete(); // items cascade
 
             $totals = ['gross' => 0, 'deductions' => 0, 'net' => 0, 'paye' => 0, 'cost' => 0, 'exceptions' => 0, 'count' => 0];
@@ -218,9 +274,18 @@ class PayrollRunService
                 if (! $profile) {
                     continue;
                 }
+                // A scheduled exit inside the period also ends pay (and triggers the leave settlement) in this run.
                 $endDate = $isFinal && ! empty($run->options['exit_date'])
-                    ? CarbonImmutable::parse($run->options['exit_date']) : $this->employmentEnd($employee);
+                    ? CarbonImmutable::parse($run->options['exit_date']) : $this->finalDuesDate($employee);
+                $startDate = $this->employmentStart($employee);
                 $basic = $this->basicSalaryOn($employee, $profile, $periodEnd->toDateString());
+                // Proration basis: working days (see PayrollCalculator), counted with the company's holidays.
+                $employedWorkingDays = null;
+                if (($startDate && $startDate->gt($periodStart)) || ($endDate && $endDate->lt($periodEnd))) {
+                    $from = $startDate && $startDate->gt($periodStart) ? $startDate : $periodStart;
+                    $to = $endDate && $endDate->lt($periodEnd) ? $endDate : $periodEnd;
+                    $employedWorkingDays = $to->lt($from) ? 0.0 : (float) WorkingDays::between($from, $to, $company->id);
+                }
 
                 // Prior pay this month (off-cycle runs are cumulative with locked runs for tax & caps)
                 $priorLines = $isRegular ? collect() : PayrollRunEmployee::withoutGlobalScopes()
@@ -257,23 +322,18 @@ class PayrollRunService
                     $inputs['unpaid_leave_days'] = (float) ($inputs['unpaid_leave_days'] ?? 0) + $absentDays;
                 }
 
+                // Leave accrued to the exit date, net of leave taken (Leave module): positive → encash, still negative
+                // after full accrual → recover the over-taken days. Paid in the final-dues run (HR's override wins), or in
+                // the regular run covering the exit date when the leaver has no final-dues run.
+                $settleInRegular = $isRegular && $endDate && $endDate->betweenIncluded($periodStart, $periodEnd)
+                    && ! $hasFinalDuesRun->has($employee->id) && isset($inputs['annual_leave_settlement']);
+                if ($isFinal || $settleInRegular) {
+                    $leaveDays = $isFinal
+                        ? (float) ($run->options['leave_days'] ?? ($this->settledInRegularRun($employee, $run) ? 0 : ($inputs['annual_leave_settlement'] ?? $inputs['annual_leave_balance'] ?? 0)))
+                        : (float) $inputs['annual_leave_settlement'];
+                    array_push($lines, ...$this->leaveSettlementLines($leaveDays, $basic, $company, $byCode, $byRole));
+                }
                 if ($isFinal) {
-                    // Leave accrued to the exit date, net of leave taken (Leave module): positive → encash,
-                    // still negative after full accrual → recover the over-taken days. HR's override wins.
-                    $leaveDays = (float) ($run->options['leave_days'] ?? $inputs['annual_leave_settlement'] ?? $inputs['annual_leave_balance'] ?? 0);
-                    $divisor = (float) PayrollSettings::get($company, 'leave_encashment_divisor') ?: 22;
-                    $daysLabel = rtrim(rtrim(number_format(abs($leaveDays), 2), '0'), '.');
-                    if ($leaveDays > 0 && ($comp = $byCode['LEAVE_ENC'] ?? $byRole['leave_encashment'] ?? null)) {
-                        $c = $comp->toEngine(round($basic / $divisor * $leaveDays, 2), null, 'one_off');
-                        $c['calculation'] = 'fixed';
-                        $c['name'] = sprintf('Leave encashment (%s days)', $daysLabel);
-                        $lines[] = $c;
-                    } elseif ($leaveDays < 0 && ($comp = $byCode['LEAVE_REC'] ?? $byRole['leave_recovery'] ?? null)) {
-                        $c = $comp->toEngine(round($basic / $divisor * abs($leaveDays), 2), null, 'one_off');
-                        $c['calculation'] = 'fixed';
-                        $c['name'] = sprintf('Leave over-taken recovery (%s days)', $daysLabel);
-                        $lines[] = $c;
-                    }
                     if (($notice = (float) ($run->options['notice_pay'] ?? 0)) > 0 && ($comp = $byCode['NOTICE_PAY'] ?? $byRole['notice_pay'] ?? null)) {
                         $c = $comp->toEngine($notice, null, 'one_off');
                         $c['calculation'] = 'fixed';
@@ -292,9 +352,10 @@ class PayrollRunService
                     'basicSalary' => $basic,
                     'periodStart' => $periodStart,
                     'periodEnd' => $periodEnd,
-                    'employmentStart' => $employee->date_of_joining ? CarbonImmutable::parse($employee->date_of_joining) : null,
+                    'employmentStart' => $startDate,
                     'employmentEnd' => $endDate,
                     'workingDays' => $workingDays,
+                    'employedWorkingDays' => $employedWorkingDays,
                     'monthlyHours' => $monthlyHours,
                     'overtimeMultiplierNormal' => (float) PayrollSettings::get($company, 'overtime_multiplier_normal'),
                     'overtimeMultiplierHoliday' => (float) PayrollSettings::get($company, 'overtime_multiplier_holiday'),
@@ -363,7 +424,7 @@ class PayrollRunService
                 $totals['exceptions'] += $flags ? 1 : 0;
             }
 
-            $run->update([
+            $this->quietly($run, [
                 'options' => $run->options,
                 'status' => 'calculated',
                 'needs_recalculation' => false,
@@ -385,6 +446,32 @@ class PayrollRunService
             ->withProperties(['employees' => $run->employee_count, 'gross' => $run->total_gross, 'net' => $run->total_net])->log('Payroll calculated');
 
         return $run->fresh();
+    }
+
+    /** Encashment (+ days) or recovery (− days) of annual leave at basic ÷ the company's encashment divisor. */
+    private function leaveSettlementLines(float $leaveDays, float $basic, Company $company, Collection $byCode, Collection $byRole): array
+    {
+        $divisor = (float) PayrollSettings::get($company, 'leave_encashment_divisor') ?: 22;
+        $daysLabel = rtrim(rtrim(number_format(abs($leaveDays), 2), '0'), '.');
+        $comp = $leaveDays > 0 ? ($byCode['LEAVE_ENC'] ?? $byRole['leave_encashment'] ?? null)
+            : ($leaveDays < 0 ? ($byCode['LEAVE_REC'] ?? $byRole['leave_recovery'] ?? null) : null);
+        if (! $comp) {
+            return [];
+        }
+        $c = $comp->toEngine(round($basic / $divisor * abs($leaveDays), 2), null, 'leave_settlement');
+        $c['calculation'] = 'fixed';
+        $c['name'] = sprintf($leaveDays > 0 ? 'Leave encashment (%s days)' : 'Leave over-taken recovery (%s days)', $daysLabel);
+
+        return [$c];
+    }
+
+    /** True when an approved regular run already paid this leaver's leave settlement. */
+    private function settledInRegularRun(Employee $employee, PayrollRun $run): bool
+    {
+        return PayrollRunItem::where('source', 'leave_settlement')
+            ->whereIn('payroll_run_employee_id', PayrollRunEmployee::withoutGlobalScopes()->where('employee_id', $employee->id)
+                ->whereHas('run', fn ($q) => $q->where('type', 'regular')->whereIn('status', ['approved', 'paid'])->where('id', '!=', $run->id))->select('id'))
+            ->exists();
     }
 
     private function priorFrom(Collection $lines): array
@@ -475,7 +562,7 @@ class PayrollRunService
             abort(403, 'Segregation of duties: the person who calculated a run cannot review it. Ask HR (payroll.review) or another payroll officer to review.');
         }
         $this->logOwnPaySignoff($run, $actor, 'reviewed');
-        $run->update(['status' => 'reviewed', 'reviewed_by' => $actor->id, 'reviewed_at' => now()]);
+        $this->quietly($run, ['status' => 'reviewed', 'reviewed_by' => $actor->id, 'reviewed_at' => now()]);
         activity('payroll')->performedOn($run)->causedBy($actor)->log('Payroll reviewed');
 
         $approvers = User::where('company_id', $run->company_id)->where('is_active', true)
@@ -544,7 +631,7 @@ class PayrollRunService
         if ($run->status !== 'reviewed') {
             throw ValidationException::withMessages(['status' => 'Only a reviewed run can be sent back.']);
         }
-        $run->update(['status' => 'calculated', 'reviewed_by' => null, 'reviewed_at' => null]);
+        $this->quietly($run, ['status' => 'calculated', 'reviewed_by' => null, 'reviewed_at' => null]);
         activity('payroll')->performedOn($run)->causedBy($actor)->withProperties(['reason' => $reason])->log('Payroll returned for changes');
 
         return $run->fresh();
@@ -579,7 +666,7 @@ class PayrollRunService
 
         $this->logOwnPaySignoff($run, $actor, 'approved');
         DB::transaction(function () use ($run, $actor) {
-            $run->update(['status' => 'approved', 'approved_by' => $actor->id, 'approved_at' => now()]);
+            $this->quietly($run, ['status' => 'approved', 'approved_by' => $actor->id, 'approved_at' => now()]);
             $this->postDeductions($run);
             $this->calendarRow(Company::find($run->company_id), $run->period)?->update(['status' => 'approved']);
         });
@@ -652,7 +739,7 @@ class PayrollRunService
             throw ValidationException::withMessages(['status' => 'Only a run awaiting approval can be rejected.']);
         }
         abort_unless($actor->can('payroll.approve'), 403);
-        $run->update(['status' => 'calculated', 'reviewed_by' => null, 'reviewed_at' => null]);
+        $this->quietly($run, ['status' => 'calculated', 'reviewed_by' => null, 'reviewed_at' => null]);
         activity('payroll')->performedOn($run)->causedBy($actor)->withProperties(['reason' => $reason])->log('Payroll rejected');
         if ($preparer = User::find($run->created_by)) {
             $preparer->notify(new PayrollRunDecision($run, 'rejected', $reason));
@@ -668,11 +755,30 @@ class PayrollRunService
         }
         abort_if($this->ownPayBlocked($run, $actor), 403, self::OWN_PAY_MESSAGE);
         $this->logOwnPaySignoff($run, $actor, 'marked paid');
-        $run->update(['status' => 'paid', 'paid_by' => $actor->id, 'paid_at' => now()]);
+        $this->quietly($run, ['status' => 'paid', 'paid_by' => $actor->id, 'paid_at' => now()]);
         $this->calendarRow(Company::find($run->company_id), $run->period)?->update(['status' => 'paid']);
         activity('payroll')->performedOn($run)->causedBy($actor)->log('Payroll marked as paid');
 
         return $run->fresh();
+    }
+
+    /** Workflow steps write their own audit entry ("Payroll calculated", "Payroll approved" …); skip the generic "updated" row. */
+    private function quietly(PayrollRun $run, array $attributes): void
+    {
+        activity()->withoutLogs(fn () => $run->update($attributes));
+    }
+
+    /**
+     * Another module changed a payroll input (e.g. an expense queued for payroll): open runs that are already
+     * calculated must be recalculated before review. Optionally limited to runs paying the given employees.
+     */
+    public static function inputsChanged(int $companyId, ?array $employeeIds = null): void
+    {
+        PayrollRun::withoutGlobalScopes()->where('company_id', $companyId)->whereIn('status', ['calculated', 'reviewed'])
+            ->where(fn ($q) => $q->where('type', 'regular')->orWhere('off_cycle_reason', 'final_dues'))
+            ->when($employeeIds !== null, fn ($q) => $q->whereIn('id', PayrollRunEmployee::withoutGlobalScopes()
+                ->whereIn('employee_id', $employeeIds)->select('payroll_run_id')))
+            ->get()->each(fn (PayrollRun $r) => app(self::class)->markDirty($r));
     }
 
     public function markDirty(PayrollRun $run): void

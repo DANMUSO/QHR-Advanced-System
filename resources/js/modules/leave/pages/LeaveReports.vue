@@ -43,6 +43,7 @@ const columnMap = {
         { key: 'available', label: 'Available', align: 'right' },
         { key: 'earned', label: 'Earned', align: 'right' },
         { key: 'taken', label: 'Taken', align: 'right' },
+        { key: 'booked', label: 'Booked', align: 'right' },
         { key: 'pending', label: 'Pending', align: 'right' },
     ],
     rollover: [

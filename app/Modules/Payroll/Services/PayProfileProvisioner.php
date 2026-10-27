@@ -35,7 +35,14 @@ class PayProfileProvisioner
                 ]);
             }
 
-            return $profile;
+            // A pay structure for the employee's employment level (grade) is applied automatically: its components,
+            // and its basic as the initial salary unless the contract already fixed one.
+            if ($structure = app(PayStructureService::class)->matchFor($employee)) {
+                app(PayStructureService::class)->apply($structure, $profile,
+                    $employee->date_of_joining?->toDateString() ?? now()->toDateString(), null, setBasic: ! ($basic > 0));
+            }
+
+            return $profile->fresh();
         });
     }
 

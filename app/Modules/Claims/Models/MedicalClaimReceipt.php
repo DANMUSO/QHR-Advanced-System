@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MedicalClaimReceipt extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     protected $guarded = ['id'];
 
     protected $hidden = ['path'];

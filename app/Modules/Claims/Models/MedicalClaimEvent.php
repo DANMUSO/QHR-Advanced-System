@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MedicalClaimEvent extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     public const UPDATED_AT = null;
 
     protected $guarded = ['id'];

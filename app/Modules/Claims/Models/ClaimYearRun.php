@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class ClaimYearRun extends Model
 {
+    use \App\Models\Concerns\SerializesLocalDates;
+
     public $timestamps = false;
 
     protected $guarded = ['id'];
