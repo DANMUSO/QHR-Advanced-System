@@ -129,7 +129,9 @@ class CoreSecurityQa5Test extends TestCase
             $this->flushHeaders();
         }
 
-        // A super admin may sign in as Finance.
+        // A super admin may sign in as Finance. Fresh session: the step above left this test's session signed in as
+        // the impersonated employee, and session protection would rightly sign out a different user on it.
+        $this->flushSession();
         $super = $this->user('super-admin');
         $this->stateful()->actingAs($super)->postJson("/api/admin/impersonate/{$finance->id}")->assertOk();
     }

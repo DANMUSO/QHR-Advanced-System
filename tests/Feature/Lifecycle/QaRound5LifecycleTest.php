@@ -124,7 +124,8 @@ class QaRound5LifecycleTest extends TestCase
     public function test_extend_rejects_an_end_date_before_the_current_one(): void
     {
         $end = now()->addMonths(2)->toDateString();
-        $jane = $this->employee('Jane', ['probation_status' => 'on_probation', 'probation_end_date' => $end]);
+        // Joined 4 months ago: an extension to +3 months stays inside the 12-month legal maximum (Employment Act s.42).
+        $jane = $this->employee('Jane', ['probation_status' => 'on_probation', 'probation_end_date' => $end, 'date_of_joining' => now()->subMonths(4)->toDateString()]);
         $review = app(ProbationRouting::class)->open($jane, notify: false);
 
         $this->actingAs($this->hr)->postJson("/api/probation/reviews/{$review->id}/hr-decision",
