@@ -30,38 +30,44 @@ class DemoSeeder extends Seeder
         $this->faker->seed(2026);
 
         // Super admin
-        User::create([
-            'name'                => 'System Administrator',
-            'email'               => 'admin@hr.test',
-            'password'            => self::PASSWORD,
-            'activated_at'        => now(),
-            'password_changed_at' => now(),
-        ])->assignRole('super-admin');
+        if (! User::where('email', 'admin@hr.test')->exists()) {
+            User::create([
+                'name'                => 'System Administrator',
+                'email'               => 'admin@hr.test',
+                'password'            => self::PASSWORD,
+                'activated_at'        => now(),
+                'password_changed_at' => now(),
+            ])->assignRole('super-admin');
+        }
 
         // Two realistic Kenyan companies
-        $this->seedCompany(
-            name:      'Savanna Financial Services Ltd',
-            code:      'SFS',
-            branches:  [
-                'Head Office'  => 'Upper Hill, Nairobi',
-                'Westlands'    => 'Westlands, Nairobi',
-                'Mombasa'      => 'Nyali, Mombasa',
-                'Kisumu'       => 'Milimani, Kisumu',
-            ],
-            headcount: 55,
-            primary:   true,
-        );
+        if (! Company::where('code', 'SFS')->exists()) {
+            $this->seedCompany(
+                name:      'Savanna Financial Services Ltd',
+                code:      'SFS',
+                branches:  [
+                    'Head Office'  => 'Upper Hill, Nairobi',
+                    'Westlands'    => 'Westlands, Nairobi',
+                    'Mombasa'      => 'Nyali, Mombasa',
+                    'Kisumu'       => 'Milimani, Kisumu',
+                ],
+                headcount: 55,
+                primary:   true,
+            );
+        }
 
-        $this->seedCompany(
-            name:      'Rift Valley Agribusiness Co.',
-            code:      'RVA',
-            branches:  [
-                'Nakuru HQ'    => 'Nakuru Town',
-                'Eldoret'      => 'Eldoret Town',
-            ],
-            headcount: 30,
-            primary:   false,
-        );
+        if (! Company::where('code', 'RVA')->exists()) {
+            $this->seedCompany(
+                name:      'Rift Valley Agribusiness Co.',
+                code:      'RVA',
+                branches:  [
+                    'Nakuru HQ'    => 'Nakuru Town',
+                    'Eldoret'      => 'Eldoret Town',
+                ],
+                headcount: 30,
+                primary:   false,
+            );
+        }
     }
 
     private function seedCompany(string $name, string $code, array $branches, int $headcount, bool $primary = false): void
