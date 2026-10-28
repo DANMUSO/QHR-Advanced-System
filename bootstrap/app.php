@@ -16,6 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Trust the ALB — it forwards X-Forwarded-For and X-Forwarded-Proto.
+        // '*' trusts all proxies; lock this down to your ALB subnet CIDR in production if preferred.
+        $middleware->trustProxies(at: '*');
         $middleware->statefulApi();
         $middleware->alias([
             'account.secure' => EnsureAccountIsSecure::class,
