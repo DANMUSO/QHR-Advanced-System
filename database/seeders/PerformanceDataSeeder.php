@@ -417,6 +417,7 @@ class PerformanceDataSeeder extends Seeder
         foreach ($events as [$action, $userId, $employeeId, $meta]) {
             DB::table('perf_goal_events')->insert([
                 'goal_id'     => $goal->id,
+                'company_id'  => $goal->company_id,
                 'user_id'     => $userId,
                 'employee_id' => $employeeId,
                 'action'      => $action,
