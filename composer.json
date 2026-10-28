@@ -30,7 +30,12 @@
         "psr-4": {
             "App\\": "app/",
             "Database\\Factories\\": "database/factories/",
-            "Database\\Seeders\\": "database/seeders/"
+            "Database\\Seeders\\": "database/seeders/",
+            "App\\Modules\\Employees\\Database\\": "app/Modules/Employees/database/",
+            "App\\Modules\\Organization\\Database\\": "app/Modules/Organization/database/",
+            "App\\Modules\\Benefits\\Database\\": "app/Modules/Benefits/database/",
+            "App\\Modules\\Compliance\\Database\\": "app/Modules/Compliance/database/",
+            "App\\Modules\\Recruitment\\Database\\": "app/Modules/Recruitment/database/"
         }
     },
     "autoload-dev": {
