@@ -474,6 +474,7 @@ class PerformanceDataSeeder extends Seeder
         foreach ($checkins as $i => [$rating, $comment, $recommendation]) {
             DB::table('perf_pip_checkins')->insert([
                 'pip_id'               => $pip->id,
+                'company_id'           => $pip->company_id,
                 'meeting_date'         => now()->subWeeks(4 - $i)->toDateString(),
                 'progress_rating'      => $rating,
                 'comment'              => $comment,
