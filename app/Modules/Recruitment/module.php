@@ -31,4 +31,5 @@ return [
         });
     },
     'approval_providers' => [App\Modules\Recruitment\Dashboard\RequisitionApprovals::class],
+    'demo_seeder' => App\Modules\Recruitment\Database\DemoSeeder::class,
 ];

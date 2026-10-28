@@ -13,9 +13,10 @@ class DatabaseSeeder extends Seeder
         Artisan::call('hr:sync-permissions');
         $this->call(HolidaySeeder::class);
 
-        if (app()->environment('local', 'testing')) {
+        $withDemo = app()->environment('local', 'testing') || $this->command?->option('demo');
+
+        if ($withDemo) {
             $this->call(DemoSeeder::class);
-            // Module demo data, in manifest order (modules may depend on earlier ones).
             foreach (ModuleRegistry::all() as $module) {
                 if ($seeder = $module['manifest']['demo_seeder'] ?? null) {
                     $this->call($seeder);

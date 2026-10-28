@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Event;
 return [
     'name' => 'Benefits',
     'order' => 75,
+    'demo_seeder' => App\Modules\Benefits\Database\DemoSeeder::class,
     'approval_providers' => [
         App\Modules\Benefits\Dashboard\ExpenseApprovals::class,
         App\Modules\Benefits\Dashboard\ExpensePayments::class,
