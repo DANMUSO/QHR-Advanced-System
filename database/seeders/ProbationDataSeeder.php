@@ -26,7 +26,7 @@ class ProbationDataSeeder extends Seeder
                 $endDate = $employee->probation_end_date ?? now()->addMonths(2);
                 $status  = $endDate->isPast() ? 'primary_done' : 'pending';
 
-                ProbationReview::create([
+                (new ProbationReview)->forceFill([
                     'company_id'        => $company->id,
                     'employee_id'       => $employee->id,
                     'probation_end_date'=> $endDate->toDateString(),
@@ -35,7 +35,7 @@ class ProbationDataSeeder extends Seeder
                         ? 'Employee has shown good progress. Recommend confirmation.'
                         : null,
                     'primary_reviewed_at' => $status === 'primary_done' ? now()->subDays(rand(1, 14)) : null,
-                ]);
+                ])->save();
             }
 
             // A few recently confirmed employees
@@ -53,7 +53,7 @@ class ProbationDataSeeder extends Seeder
 
                 $endDate = $employee->probation_end_date ?? now()->subMonths(1);
 
-                ProbationReview::create([
+                (new ProbationReview)->forceFill([
                     'company_id'          => $company->id,
                     'employee_id'         => $employee->id,
                     'probation_end_date'  => $endDate->toDateString(),
@@ -63,7 +63,7 @@ class ProbationDataSeeder extends Seeder
                     'primary_reviewed_at' => $endDate->copy()->subDays(7),
                     'hr_comment'          => 'Confirmed as per supervisor recommendation.',
                     'hr_reviewed_at'      => $endDate->copy()->subDays(3),
-                ]);
+                ])->save();
             }
 
             // One extended probation
@@ -73,7 +73,7 @@ class ProbationDataSeeder extends Seeder
                 ->first();
 
             if ($extendCandidate && ! ProbationReview::withoutGlobalScopes()->where('employee_id', $extendCandidate->id)->exists()) {
-                ProbationReview::create([
+            (new ProbationReview)->forceFill([
                     'company_id'          => $company->id,
                     'employee_id'         => $extendCandidate->id,
                     'probation_end_date'  => now()->subDays(10)->toDateString(),
@@ -84,7 +84,7 @@ class ProbationDataSeeder extends Seeder
                     'primary_reviewed_at' => now()->subDays(12),
                     'hr_comment'          => 'Probation extended by 3 months. Monthly check-ins required.',
                     'hr_reviewed_at'      => now()->subDays(8),
-                ]);
+                ])->save();
             }
         });
     }

@@ -150,7 +150,7 @@ class PayrollExtrasSeeder extends Seeder
                 ->where('employee_id', $employee->id)
                 ->value('basic_salary') ?? rand(40000, 150000);
 
-            EmployeeContract::create([
+            (new EmployeeContract)->forceFill([
                 'company_id'    => $company->id,
                 'employee_id'   => $employee->id,
                 'reference'     => $company->code . '-CTR-' . str_pad((string) $counter++, 4, '0', STR_PAD_LEFT),
@@ -162,7 +162,7 @@ class PayrollExtrasSeeder extends Seeder
                 'status'        => 'active',
                 'notes'         => 'Initial employment contract.',
                 'created_by'    => $adminUser,
-            ]);
+            ])->save();
         }
     }
 }

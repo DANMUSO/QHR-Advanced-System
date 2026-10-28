@@ -116,7 +116,7 @@ class EmployeeExtrasSeeder extends Seeder
             $fromDept = $employee->department_id;
             $toDept   = collect($departments)->reject(fn ($d) => $d === $fromDept)->random();
 
-            EmployeeTransfer::create([
+            (new EmployeeTransfer)->forceFill([
                 'company_id'         => $company->id,
                 'employee_id'        => $employee->id,
                 'type'               => $types[array_rand($types)],
@@ -135,7 +135,7 @@ class EmployeeExtrasSeeder extends Seeder
                 'status'             => 'completed',
                 'applied_at'         => now()->subDays(rand(35, 370)),
                 'processed_by'       => $processedBy,
-            ]);
+            ])->save();
         }
     }
 
@@ -159,7 +159,7 @@ class EmployeeExtrasSeeder extends Seeder
 
             foreach ($checkTypes as $type) {
                 $status = collect(['pending', 'verified', 'verified', 'verified', 'failed'])->random();
-                KycCheck::create([
+                (new KycCheck)->forceFill([
                     'company_id'  => $company->id,
                     'employee_id' => $employee->id,
                     'check_type'  => $type,
@@ -172,7 +172,7 @@ class EmployeeExtrasSeeder extends Seeder
                     'notes'       => $status === 'failed' ? 'Discrepancy found — follow up required.' : null,
                     'verified_by' => $status === 'verified' ? $verifiedBy : null,
                     'verified_at' => $status === 'verified' ? now()->subDays(rand(1, 180)) : null,
-                ]);
+                ])->save();
             }
         }
     }

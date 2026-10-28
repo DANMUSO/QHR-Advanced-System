@@ -121,6 +121,7 @@ class LearningSeeder extends Seeder
                 Enrollment::create([
                     'course_id'    => $course->id,
                     'employee_id'  => $employee->id,
+                    'company_id'   => $company->id,
                     'status'       => $status,
                     'start_date'   => $startDate->toDateString(),
                     'end_date'     => $status === 'completed'

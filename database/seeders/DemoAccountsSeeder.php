@@ -353,7 +353,7 @@ class DemoAccountsSeeder extends Seeder
         $joined = $emp->date_of_joining;
         if (!$joined) return;
 
-        ProbationReview::create([
+        (new ProbationReview)->forceFill([
             'company_id'          => $emp->company_id,
             'employee_id'         => $emp->id,
             'probation_end_date'  => $joined->copy()->addMonths($emp->probation_months ?? 6)->toDateString(),
@@ -363,7 +363,7 @@ class DemoAccountsSeeder extends Seeder
             'primary_reviewed_at' => $joined->copy()->addMonths(($emp->probation_months ?? 6) - 1),
             'hr_comment'          => 'Confirmed as per supervisor recommendation. Welcome to the permanent team!',
             'hr_reviewed_at'      => $joined->copy()->addMonths($emp->probation_months ?? 6)->subDays(5),
-        ]);
+        ])->save();
     }
 
     private function seedRecognition(Employee $emp): void
