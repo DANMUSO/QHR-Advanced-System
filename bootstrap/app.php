@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // '*' trusts all proxies; lock this down to your ALB subnet CIDR in production if preferred.
         $middleware->trustProxies(at: '*');
         $middleware->statefulApi();
+        $middleware->handleCors(paths: ['api/*', 'sanctum/csrf-cookie'], allowedOrigins: [env('APP_URL')], allowedMethods: ['*'], allowedHeaders: ['*'], exposedHeaders: [], maxAge: 0, supportsCredentials: true);
         $middleware->alias([
             'account.secure' => EnsureAccountIsSecure::class,
             'role' => RoleMiddleware::class,
