@@ -3,8 +3,6 @@
 return [
     'name' => 'Compliance',
     'order' => 76,
-    'demo_seeder' => App\Modules\Compliance\Database\DemoSeeder::class,
-
     'boot' => function () {
         // A Warning / Final warning outcome issues the linked warning and its letter however the case is saved
         // (case screen, PIP escalation, import). Idempotent per case.
