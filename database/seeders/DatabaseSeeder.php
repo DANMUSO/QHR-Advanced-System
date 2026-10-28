@@ -13,7 +13,7 @@ class DatabaseSeeder extends Seeder
         Artisan::call('hr:sync-permissions');
         $this->call(HolidaySeeder::class);
 
-        $withDemo = app()->environment('local', 'testing') || $this->command?->option('demo');
+        $withDemo = app()->environment('local', 'testing') || in_array('--demo', $_SERVER['argv'] ?? []);
 
         if ($withDemo) {
             $this->call(DemoSeeder::class);
