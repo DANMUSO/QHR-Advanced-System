@@ -441,18 +441,20 @@ class PerformanceDataSeeder extends Seeder
             'teamwork'         => 'Went above and beyond to support colleagues during a critical project.',
             'customer_service' => 'Received outstanding feedback from multiple clients this month.',
             'leadership'       => 'Stepped up to lead the team during a challenging period with great results.',
+            'appreciation'     => 'Thank you for your dedication and positive attitude every day.',
         ];
 
         foreach ($employees->take(8) as $i => $employee) {
             $category = $categories[$i % count($categories)];
+            $message  = $messages[$category] ?? 'Recognised for outstanding contribution to the team.';
             (new Recognition)->forceFill([
-                'company_id'        => $company->id,
-                'employee_id'       => $employee->id,
-                'awarded_by_user_id'=> $hrUser->id,
-                'category'          => $category,
-                'message'           => $messages[$category],
-                'created_at'        => now()->subDays(rand(5, 90)),
-                'updated_at'        => now()->subDays(rand(1, 5)),
+                'company_id'         => $company->id,
+                'employee_id'        => $employee->id,
+                'awarded_by_user_id' => $hrUser->id,
+                'category'           => $category,
+                'message'            => $message,
+                'created_at'         => now()->subDays(rand(5, 90)),
+                'updated_at'         => now()->subDays(rand(1, 5)),
             ])->save();
         }
     }
