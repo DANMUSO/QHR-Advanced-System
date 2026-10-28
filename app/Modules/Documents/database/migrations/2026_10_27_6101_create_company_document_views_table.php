@@ -18,8 +18,8 @@ return new class extends Migration
             $table->foreignId('employee_id')->constrained()->cascadeOnDelete();
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
             $table->unsignedSmallInteger('version')->default(1); // document version last viewed
-            $table->timestamp('first_viewed_at');
-            $table->timestamp('viewed_at');
+            $table->timestamp('first_viewed_at')->useCurrent();
+            $table->timestamp('viewed_at')->useCurrent();
             $table->timestamps();
             $table->unique(['company_document_id', 'employee_id'], 'company_doc_view_unique');
         });
